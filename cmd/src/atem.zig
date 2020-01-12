@@ -31,9 +31,9 @@ pub const FuncDef = struct {
 };
 
 pub const Expr = union(enum) {
-    NumInt: i64,
-    ArgRef: i8,
-    FuncRef: i32,
+    NumInt: isize,
+    ArgRef: isize,
+    FuncRef: isize,
     Call: *struct {
         Callee: Expr,
         Args: []Expr,
