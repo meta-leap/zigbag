@@ -21,12 +21,14 @@ fn fromJson(mem: *std.mem.Allocator, top_level: []std.json.Value) !atem.Prog {
             return error.BadJsonSrc;
         const arrargs = try as(std.json.Value.Array, std.json.Array, arrfuncdef.at(1));
         prog[i].Args = try mem.alloc(bool, arrargs.len);
-        var j: usize = 0;
-        while (j < arrargs.len) : (j += 1) {
-            const numused = try as(std.json.Value.Integer, i64, arrargs.at(j));
-            prog[i].Args[j] = (numused != 0);
-            if (numused == 0)
-                prog[i].allArgsUsed = false;
+        {
+            var a: usize = 0;
+            while (a < arrargs.len) : (a += 1) {
+                const numused = try as(std.json.Value.Integer, i64, arrargs.at(a));
+                prog[i].Args[a] = (numused != 0);
+                if (numused == 0)
+                    prog[i].allArgsUsed = false;
+            }
         }
     }
     return error.Neato;
