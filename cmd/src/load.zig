@@ -2,7 +2,7 @@ const std = @import("std");
 
 const atem = @import("./atem.zig");
 
-pub fn FromJson(mem: *std.mem.Allocator, src: []u8) !atem.Prog {
+pub fn FromJson(mem: *std.mem.Allocator, src: []const u8) !atem.Prog {
     var jsonparser = std.json.Parser.init(mem, true);
     defer jsonparser.deinit();
     var jsontree = try jsonparser.parse(src);
@@ -11,7 +11,7 @@ pub fn FromJson(mem: *std.mem.Allocator, src: []u8) !atem.Prog {
     return fromJson(mem, rootarr.toSlice());
 }
 
-fn fromJson(mem: *std.mem.Allocator, top_level: []std.json.Value) !atem.Prog {
+fn fromJson(mem: *std.mem.Allocator, top_level: []const std.json.Value) !atem.Prog {
     var prog = try mem.alloc(atem.FuncDef, top_level.len);
     var i: usize = 0;
     while (i < top_level.len) : (i += 1) {
