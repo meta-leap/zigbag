@@ -24,7 +24,7 @@ fn fromJson(mem: *std.mem.Allocator, top_level: []std.json.Value) !atem.Prog {
         {
             var a: usize = 0;
             while (a < arrargs.len) : (a += 1) {
-                const numused = try as(std.json.Value.Integer, i64, arrargs.at(a));
+                const numused = (try as(std.json.Value.Integer, i64, arrargs.at(a))).*;
                 prog[i].Args[a] = (numused != 0);
                 if (numused == 0)
                     prog[i].allArgsUsed = false;
@@ -34,9 +34,9 @@ fn fromJson(mem: *std.mem.Allocator, top_level: []std.json.Value) !atem.Prog {
     return error.Neato;
 }
 
-inline fn as(comptime UnionMemberTag: var, comptime TUnionMember: type, scrutinee: var) !TUnionMember {
+inline fn as(comptime UnionMemberTag: var, comptime TUnionMember: type, scrutinee: var) !*const TUnionMember {
     switch (scrutinee) {
-        UnionMemberTag => |ok| return ok,
+        UnionMemberTag => |*ok| return ok,
         else => return error.BadJsonSrc,
     }
 }
