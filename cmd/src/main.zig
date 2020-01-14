@@ -16,11 +16,11 @@ pub fn main() !void {
 
     const tmpfd: atem.FuncDef = undefined;
     const tmpexpr: atem.Expr = undefined;
-    const tmpintbuf = try mem.allocator.alloc(u8, 20);
-    const tmpintlen = std.fmt.formatIntBuf(tmpintbuf, srcfilestat.size, 10, false, std.fmt.FormatOptions{});
     std.debug.warn("{}\n", .{srcfilestat.size});
     std.debug.warn("{s}\n", .{srcfiletext});
-    std.debug.warn("\n\n{}\t{s}!\n", .{ tmpintlen, tmpintbuf[0..tmpintlen] });
 
     const prog = try load.FromJson(&mem.allocator, srcfiletext);
+    const tmpintbuf = try mem.allocator.alloc(u8, 20);
+    const tmpintlen = std.fmt.formatIntBuf(tmpintbuf, prog.len, 10, false, std.fmt.FormatOptions{});
+    std.debug.warn("\n{s}\n", .{tmpintbuf[0..tmpintlen]});
 }

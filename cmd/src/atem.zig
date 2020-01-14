@@ -24,7 +24,7 @@ pub const StdFunc = enum {
 pub const FuncDef = struct {
     Args: []bool,
     Body: Expr,
-    Meta: [][]u8,
+    Meta: [][]const u8,
     selector: u8,
     allArgsUsed: bool,
     isMereAlias: bool,
@@ -34,15 +34,17 @@ pub const Expr = union(enum) {
     NumInt: isize,
     ArgRef: isize,
     FuncRef: isize,
-    Call: *struct {
-        Callee: Expr,
-        Args: []Expr,
-        IsClosure: u8,
-    },
+    Call: *ExprCall,
 
     pub fn jsonSrc(self: Expr) []u8 {
         return switch (self) {
             .NumIntt => "[]",
         };
     }
+};
+
+pub const ExprCall = struct {
+    Callee: Expr,
+    Args: []const Expr,
+    IsClosure: u8 = 0,
 };
