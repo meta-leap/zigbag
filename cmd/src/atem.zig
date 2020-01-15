@@ -1,3 +1,5 @@
+const std = @import("std");
+
 pub const Prog = []FuncDef;
 
 pub const OpCode = enum {
@@ -25,7 +27,7 @@ pub const FuncDef = struct {
     Args: []bool,
     Body: Expr,
     Meta: [][]const u8,
-    selector: u8,
+    selector: isize,
     allArgsUsed: bool,
     isMereAlias: bool,
 };
@@ -36,10 +38,22 @@ pub const Expr = union(enum) {
     FuncRef: isize,
     Call: *ExprCall,
 
-    pub fn jsonSrc(self: Expr) []u8 {
+    pub inline fn is(self: Expr, comptime tag: var) ?(std.meta.TagPayloadType(Expr, tag)) {
+        switch (self) {
+            else => return null,
+            tag => |ok| return ok,
+        }
+    }
+
+    pub inline fn isnt(self: Expr, comptime tag: var) bool {
         return switch (self) {
-            .NumIntt => "[]",
+            tag => false,
+            else => true,
         };
+    }
+
+    pub fn jsonSrc(self: Expr) []const u8 {
+        return "[]";
     }
 };
 

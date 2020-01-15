@@ -7,34 +7,34 @@ pub fn FromJson(mem: *std.mem.Allocator, src: []const u8) !atem.Prog {
     defer jsonparser.deinit();
     var jsontree = try jsonparser.parse(src);
     defer jsontree.deinit();
-    const rootarr = try as(std.json.Value.Array, std.json.Array, &jsontree.root);
-    return fromJson(mem, rootarr.toSlice());
+    const rootarr = try asP(std.json.Value.Array, &jsontree.root);
+    return fromJson(mem, rootarr.toSliceConst());
 }
 
 fn fromJson(mem: *std.mem.Allocator, top_level: []const std.json.Value) !atem.Prog {
     var prog = try mem.alloc(atem.FuncDef, top_level.len);
     var i: usize = 0;
     while (i < top_level.len) : (i += 1) {
-        const arrfuncdef = try as(std.json.Value.Array, std.json.Array, &top_level[i]);
+        const arrfuncdef = try asP(std.json.Value.Array, &top_level[i]);
         if (arrfuncdef.len != 3)
             return error.BadJsonSrc;
 
-        const arrmeta = try as(std.json.Value.Array, std.json.Array, &arrfuncdef.at(0));
-        const arrargs = try as(std.json.Value.Array, std.json.Array, &arrfuncdef.at(1));
+        const arrmeta = try asP(std.json.Value.Array, &arrfuncdef.at(0));
+        const arrargs = try asP(std.json.Value.Array, &arrfuncdef.at(1));
         prog[i].allArgsUsed = true;
         prog[i].Meta = try mem.alloc([]u8, arrmeta.len);
         prog[i].Args = try mem.alloc(bool, arrargs.len);
         {
             var a: usize = 0;
             while (a < arrargs.len) : (a += 1) {
-                const numused = (try as(std.json.Value.Integer, i64, &arrargs.at(a))).*;
+                const numused = try asV(std.json.Value.Integer, &arrargs.at(a));
                 prog[i].Args[a] = (numused != 0);
                 if (numused == 0)
                     prog[i].allArgsUsed = false;
             }
             var m: usize = 0;
             while (m < arrmeta.len) : (m += 1)
-                prog[i].Meta[m] = (try as(std.json.Value.String, []const u8, &arrmeta.at(m))).*;
+                prog[i].Meta[m] = try asV(std.json.Value.String, &arrmeta.at(m));
         }
         prog[i].Body = try exprFromJson(mem, &arrfuncdef.at(2), @intCast(isize, arrargs.len));
     }
@@ -56,12 +56,12 @@ fn exprFromJson(mem: *std.mem.Allocator, from: *const std.json.Value, curFnNumAr
                 n += curFnNumArgs;
             if (n < 0 or n >= curFnNumArgs)
                 return error.BadJsonSrc;
-            return atem.Expr{ .ArgRef = n };
+            return atem.Expr{ .ArgRef = -(n + 2) };
         },
 
         std.json.Value.Array => |arr| {
             if (arr.len == 1)
-                return atem.Expr{ .FuncRef = (try as(std.json.Value.Integer, i64, &arr.at(0))).* };
+                return atem.Expr{ .FuncRef = try asV(std.json.Value.Integer, &arr.at(0)) };
 
             const callee = try exprFromJson(mem, &arr.at(0), curFnNumArgs);
             var args = try mem.alloc(atem.Expr, arr.len - 1);
@@ -73,19 +73,15 @@ fn exprFromJson(mem: *std.mem.Allocator, from: *const std.json.Value, curFnNumAr
                     a += 1;
                 }
             }
-            switch (callee) {
-                else => {
-                    return atem.Expr{ .Call = &atem.ExprCall{ .Callee = callee, .Args = args } };
-                },
-                .Call => |call| {
-                    const merged = try mem.alloc(atem.Expr, args.len + call.Args.len);
-                    std.mem.copy(atem.Expr, merged, args);
-                    std.mem.copy(atem.Expr, merged[args.len..], call.Args);
-                    mem.free(args);
-                    mem.free(call.Args);
-                    return atem.Expr{ .Call = &atem.ExprCall{ .Callee = call.Callee, .Args = merged } };
-                },
-            }
+            if (callee.is(.Call)) |call| {
+                const merged = try mem.alloc(atem.Expr, args.len + call.Args.len);
+                std.mem.copy(atem.Expr, merged, args);
+                std.mem.copy(atem.Expr, merged[args.len..], call.Args);
+                mem.free(args);
+                mem.free(call.Args);
+                return atem.Expr{ .Call = &atem.ExprCall{ .Callee = call.Callee, .Args = merged } };
+            } else
+                return atem.Expr{ .Call = &atem.ExprCall{ .Callee = callee, .Args = args } };
         },
 
         else => {
@@ -96,19 +92,42 @@ fn exprFromJson(mem: *std.mem.Allocator, from: *const std.json.Value, curFnNumAr
 
 fn postLoadPreProcess(prog: atem.Prog, i: usize) void {
     const fd = &prog[i];
-    if (fd.Args.len == 0) {
-        switch (fd.Body) {
-            .Call => {},
-            else => fd.isMereAlias = true,
-        }
-    } else if (fd.Args.len >= 2) {
-        // TODO!
+    fd.isMereAlias = false;
+    fd.selector = 0;
+    if (fd.Args.len == 0 and fd.Body.isnt(.Call))
+        fd.isMereAlias = true
+    else if (fd.Args.len >= 2) {
+        if (fd.Body.is(.ArgRef)) |argref|
+            fd.selector = argref
+        else if (fd.Body.is(.Call)) |call|
+            if (call.Callee.is(.ArgRef)) |argref| {
+                var ok = (argref != -2);
+                if (ok) for (call.Args) |arg|
+                    if (arg.isnt(.ArgRef)) {
+                        ok = false;
+                        break;
+                    };
+                if (ok)
+                    fd.selector = @intCast(isize, call.Args.len);
+            };
+    }
+    fd.Body = detectAndMarkClosures(prog, fd.Body);
+}
+
+fn detectAndMarkClosures(prog: atem.Prog, expr: atem.Expr) atem.Expr {
+    return expr;
+}
+
+inline fn asP(comptime tag: var, scrutinee: var) !*const std.meta.TagPayloadType(std.json.Value, tag) {
+    switch (scrutinee.*) {
+        tag => |*ok| return ok,
+        else => return error.BadJsonSrc,
     }
 }
 
-inline fn as(comptime UnionMemberTag: var, comptime TUnionMember: type, scrutinee: var) !*const TUnionMember {
+inline fn asV(comptime tag: var, scrutinee: var) !std.meta.TagPayloadType(std.json.Value, tag) {
     switch (scrutinee.*) {
-        UnionMemberTag => |*ok| return ok,
+        tag => |ok| return ok,
         else => return error.BadJsonSrc,
     }
 }
