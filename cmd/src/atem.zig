@@ -38,7 +38,7 @@ pub const Expr = union(enum) {
     FuncRef: isize,
     Call: *ExprCall,
 
-    pub inline fn is(self: Expr, comptime tag: var) ?(std.meta.TagPayloadType(Expr, tag)) {
+    pub inline fn is(self: Expr, comptime tag: var) ?std.meta.TagPayloadType(Expr, tag) {
         switch (self) {
             else => return null,
             tag => |ok| return ok,
@@ -59,6 +59,6 @@ pub const Expr = union(enum) {
 
 pub const ExprCall = struct {
     Callee: Expr,
-    Args: []const Expr,
+    Args: []Expr,
     IsClosure: u8 = 0,
 };

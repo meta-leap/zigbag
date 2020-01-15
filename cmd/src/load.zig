@@ -13,8 +13,7 @@ pub fn FromJson(mem: *std.mem.Allocator, src: []const u8) !atem.Prog {
 
 fn fromJson(mem: *std.mem.Allocator, top_level: []const std.json.Value) !atem.Prog {
     var prog = try mem.alloc(atem.FuncDef, top_level.len);
-    var i: usize = 0;
-    while (i < top_level.len) : (i += 1) {
+    for (prog) |_, i| {
         const arrfuncdef = try asP(std.json.Value.Array, &top_level[i]);
         if (arrfuncdef.len != 3)
             return error.BadJsonSrc;
@@ -37,9 +36,9 @@ fn fromJson(mem: *std.mem.Allocator, top_level: []const std.json.Value) !atem.Pr
                 prog[i].Meta[m] = try asV(std.json.Value.String, &arrmeta.at(m));
         }
         prog[i].Body = try exprFromJson(mem, &arrfuncdef.at(2), @intCast(isize, arrargs.len));
+        std.debug.warn("\n\n{}\t{}\n\t{}\n", .{ i, prog[i].Meta[0], prog[i].Body });
     }
-    i = 0;
-    while (i < top_level.len) : (i += 1)
+    for (prog) |_, i|
         postLoadPreProcess(prog, i);
     return prog;
 }
@@ -63,25 +62,29 @@ fn exprFromJson(mem: *std.mem.Allocator, from: *const std.json.Value, curFnNumAr
             if (arr.len == 1)
                 return atem.Expr{ .FuncRef = try asV(std.json.Value.Integer, &arr.at(0)) };
 
-            const callee = try exprFromJson(mem, &arr.at(0), curFnNumArgs);
-            var args = try mem.alloc(atem.Expr, arr.len - 1);
+            var ret = atem.ExprCall{
+                .Callee = try exprFromJson(mem, &arr.at(0), curFnNumArgs),
+                .Args = try mem.alloc(atem.Expr, arr.len - 1),
+            };
             {
-                var i: usize = args.len;
+                var i: usize = ret.Args.len;
                 var a: u8 = 0;
                 while (i > 0) : (i -= 1) {
-                    args[a] = try exprFromJson(mem, &arr.at(i), curFnNumArgs);
+                    ret.Args[a] = try exprFromJson(mem, &arr.at(i), curFnNumArgs);
                     a += 1;
                 }
             }
-            if (callee.is(.Call)) |call| {
-                const merged = try mem.alloc(atem.Expr, args.len + call.Args.len);
-                std.mem.copy(atem.Expr, merged, args);
-                std.mem.copy(atem.Expr, merged[args.len..], call.Args);
-                mem.free(args);
+            if (ret.Callee.is(.Call)) |call| {
+                const merged = try mem.alloc(atem.Expr, ret.Args.len + call.Args.len);
+                std.mem.copy(atem.Expr, merged, ret.Args);
+                std.mem.copy(atem.Expr, merged[ret.Args.len..], call.Args);
+                mem.free(ret.Args);
                 mem.free(call.Args);
-                return atem.Expr{ .Call = &atem.ExprCall{ .Callee = call.Callee, .Args = merged } };
-            } else
-                return atem.Expr{ .Call = &atem.ExprCall{ .Callee = callee, .Args = args } };
+                ret.Callee = call.Callee;
+                ret.Args = merged;
+                mem.destroy(call);
+            }
+            return atem.Expr{ .Call = try copy(mem, ret) };
         },
 
         else => {
@@ -94,27 +97,29 @@ fn postLoadPreProcess(prog: atem.Prog, i: usize) void {
     const fd = &prog[i];
     fd.isMereAlias = false;
     fd.selector = 0;
-    if (fd.Args.len == 0 and fd.Body.isnt(.Call))
-        fd.isMereAlias = true
-    else if (fd.Args.len >= 2) {
-        if (fd.Body.is(.ArgRef)) |argref|
-            fd.selector = argref
-        else if (fd.Body.is(.Call)) |call|
-            if (call.Callee.is(.ArgRef)) |argref| {
-                var ok = (argref != -2);
-                if (ok) for (call.Args) |arg|
-                    if (arg.isnt(.ArgRef)) {
-                        ok = false;
-                        break;
-                    };
-                if (ok)
-                    fd.selector = @intCast(isize, call.Args.len);
-            };
-    }
-    fd.Body = detectAndMarkClosures(prog, fd.Body);
+    // if (fd.Args.len == 0 and fd.Body.isnt(.Call))
+    //     fd.isMereAlias = true
+    // else if (fd.Args.len >= 2) {
+    //     if (fd.Body.is(.ArgRef)) |argref|
+    //         fd.selector = argref
+    //     else if (fd.Body.is(.Call)) |call|
+    //         if (call.Callee.is(.ArgRef)) |argref| {
+    //             var ok = (argref != -2);
+    //             if (ok) for (call.Args) |arg|
+    //                 if (arg.isnt(.ArgRef)) {
+    //                     ok = false;
+    //                     break;
+    //                 };
+    //             if (ok)
+    //                 fd.selector = @intCast(isize, call.Args.len);
+    //         };
+    // }
+    // fd.Body = detectAndMarkClosures(prog, fd.Body);
 }
 
 fn detectAndMarkClosures(prog: atem.Prog, expr: atem.Expr) atem.Expr {
+    std.debug.warn("{}\n", .{expr});
+    while (expr.is(.FuncRef)) |fnref| {}
     return expr;
 }
 
@@ -130,4 +135,10 @@ inline fn asV(comptime tag: var, scrutinee: var) !std.meta.TagPayloadType(std.js
         tag => |ok| return ok,
         else => return error.BadJsonSrc,
     }
+}
+
+inline fn copy(mem: *std.mem.Allocator, it: var) !*@TypeOf(it) {
+    var ret = try mem.create(@TypeOf(it));
+    ret.* = it;
+    return ret;
 }
