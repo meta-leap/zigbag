@@ -3,7 +3,7 @@ const zut = @import("./zutil.zig");
 
 pub const load = @import("./load.zig");
 
-pub const Prog = []FuncDef;
+pub const Prog = []const FuncDef;
 
 pub const OpCode = enum {
     Add = -1,
@@ -34,14 +34,34 @@ pub const FuncDef = struct {
     allArgsUsed: bool,
     isMereAlias: bool,
 
-    inline fn jsonSrc(self: *FuncDef, buf: *std.Buffer) @TypeOf(std.Buffer.append).ReturnType.ErrorSet!void {}
+    fn jsonSrc(self: *const FuncDef, buf: *std.Buffer, dropFuncDefMetas: bool) !void {
+        try buf.append("[ [");
+        if (!dropFuncDefMetas) {
+            for (self.Meta) |strmeta, i| {
+                if (i > 0)
+                    try buf.appendByte(',');
+                try buf.appendByte('"');
+                try buf.append(strmeta);
+                try buf.appendByte('"');
+            }
+        }
+        try buf.append("], [");
+        for (self.Args) |argused, i| {
+            if (i > 0)
+                try buf.appendByte(',');
+            try buf.appendByte(if (argused) '1' else '0');
+        }
+        try buf.append("],\n\t\t");
+        try self.Body.jsonSrc(buf);
+        try buf.append(" ]");
+    }
 };
 
 pub const Expr = union(enum) {
     NumInt: isize,
     ArgRef: isize,
     FuncRef: isize,
-    Call: *ExprCall,
+    Call: *const ExprCall,
     Never: void,
 
     inline fn is(self: Expr, comptime tag: var) ?std.meta.TagPayloadType(Expr, tag) {
@@ -61,8 +81,9 @@ pub const Expr = union(enum) {
             .Call => |c| {
                 try buf.appendByte('[');
                 try c.Callee.jsonSrc(buf);
-                var i = c.Args.len - 1;
-                while (i > -1) : (i -= 1) {
+                var i = c.Args.len;
+                while (i > 0) {
+                    i -= 1;
                     try buf.append(", ");
                     try c.Args[i].jsonSrc(buf);
                 }
@@ -81,12 +102,13 @@ pub const ExprCall = struct {
 pub fn jsonSrc(mem: *std.mem.Allocator, prog: Prog) ![]const u8 {
     var buf = &try std.Buffer.initCapacity(mem, 64 * 1024);
     defer buf.deinit();
-    try buf.appendByte('[');
+    try buf.append("[ ");
     var i: usize = 0;
     while (i < prog.len) : (i += 1) {
         if (i > 0)
             try buf.append(", ");
-        try prog[i].jsonSrc(buf);
+        try prog[i].jsonSrc(buf, false);
+        try buf.appendByte('\n');
     }
     try buf.append("]\n");
     return buf.toOwnedSlice();
