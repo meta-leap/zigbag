@@ -15,6 +15,19 @@ pub fn build(bld: *Builder) void {
 
     const run_cmd = prog_atem.run();
     run_cmd.step.dependOn(bld.getInstallStep());
-    const run_step = bld.step("run", "Run the app");
+    addArgs(run_cmd);
+    const run_step = bld.step("run", "Run the app, use -- for passing args");
     run_step.dependOn(&run_cmd.step);
+}
+
+fn addArgs(run: *std.build.RunStep) void {
+    var i: usize = 0;
+    var ok = false;
+    while (i < std.os.argv.len) : (i += 1) {
+        const argval = std.mem.toSlice(u8, std.os.argv[i]);
+        if (ok)
+            run.addArg(argval)
+        else
+            ok = std.mem.eql(u8, argval, "--");
+    }
 }
