@@ -1,14 +1,20 @@
+const std = @import("std");
+
 const Builder = @import("std").build.Builder;
 
-pub fn build(b: *Builder) void {
-    const mode = b.standardReleaseOptions();
-    const lib = b.addStaticLibrary("atem", "src/main.zig");
-    lib.setBuildMode(mode);
-    lib.install();
+pub fn build(bld: *Builder) void {
+    const mode = bld.standardReleaseOptions();
 
-    var main_tests = b.addTest("src/main.zig");
-    main_tests.setBuildMode(mode);
+    const prog_atem = bld.addExecutable("zatem", "cmd/atem/main.zig");
+    if (std.os.getenv("USER")) |username|
+        if (std.mem.eql(u8, username, "_"))
+            prog_atem.setOutputDir("/home/_/b/");
+    prog_atem.setBuildMode(mode);
+    prog_atem.addPackagePath("atem", "src/atem.zig");
+    prog_atem.install();
 
-    const test_step = b.step("test", "Run library tests");
-    test_step.dependOn(&main_tests.step);
+    const run_cmd = prog_atem.run();
+    run_cmd.step.dependOn(bld.getInstallStep());
+    const run_step = bld.step("run", "Run the app");
+    run_step.dependOn(&run_cmd.step);
 }

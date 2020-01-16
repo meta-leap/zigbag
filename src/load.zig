@@ -1,37 +1,38 @@
 const std = @import("std");
 
 const atem = @import("./atem.zig");
+const zut = @import("./zutil.zig");
 
 pub fn FromJson(memArena: *std.heap.ArenaAllocator, src: []const u8) !atem.Prog {
     var jsonparser = std.json.Parser.init(&memArena.allocator, true);
     var jsontree = try jsonparser.parse(src);
-    const rootarr = try asP(std.json.Value.Array, &jsontree.root);
+    const rootarr = try zut.asP(std.json.Value.Array, &jsontree.root);
     return fromJson(&memArena.allocator, rootarr.toSliceConst());
 }
 
 fn fromJson(mem: *std.mem.Allocator, top_level: []const std.json.Value) !atem.Prog {
     var prog = try mem.alloc(atem.FuncDef, top_level.len);
     for (prog) |_, i| {
-        const arrfuncdef = try asP(std.json.Value.Array, &top_level[i]);
+        const arrfuncdef = try zut.asP(std.json.Value.Array, &top_level[i]);
         if (arrfuncdef.len != 3)
             return error.BadJsonSrc;
 
-        const arrmeta = try asP(std.json.Value.Array, &arrfuncdef.at(0));
-        const arrargs = try asP(std.json.Value.Array, &arrfuncdef.at(1));
+        const arrmeta = try zut.asP(std.json.Value.Array, &arrfuncdef.at(0));
+        const arrargs = try zut.asP(std.json.Value.Array, &arrfuncdef.at(1));
         prog[i].allArgsUsed = true;
         prog[i].Meta = try mem.alloc([]u8, arrmeta.len);
         prog[i].Args = try mem.alloc(bool, arrargs.len);
         {
             var a: usize = 0;
             while (a < arrargs.len) : (a += 1) {
-                const numused = try asV(std.json.Value.Integer, &arrargs.at(a));
+                const numused = try zut.asV(std.json.Value.Integer, &arrargs.at(a));
                 prog[i].Args[a] = (numused != 0);
                 if (numused == 0)
                     prog[i].allArgsUsed = false;
             }
             var m: usize = 0;
             while (m < arrmeta.len) : (m += 1)
-                prog[i].Meta[m] = try asV(std.json.Value.String, &arrmeta.at(m));
+                prog[i].Meta[m] = try zut.asV(std.json.Value.String, &arrmeta.at(m));
         }
         prog[i].Body = try exprFromJson(mem, &arrfuncdef.at(2), @intCast(isize, arrargs.len));
     }
@@ -57,7 +58,7 @@ fn exprFromJson(mem: *std.mem.Allocator, from: *const std.json.Value, curFnNumAr
 
         std.json.Value.Array => |arr| {
             if (arr.len == 1)
-                return atem.Expr{ .FuncRef = try asV(std.json.Value.Integer, &arr.at(0)) };
+                return atem.Expr{ .FuncRef = try zut.asV(std.json.Value.Integer, &arr.at(0)) };
 
             var ret = atem.ExprCall{
                 .Callee = try exprFromJson(mem, &arr.at(0), curFnNumArgs),
@@ -76,7 +77,7 @@ fn exprFromJson(mem: *std.mem.Allocator, from: *const std.json.Value, curFnNumAr
                 ret.Callee = call.Callee;
                 ret.Args = merged;
             }
-            return atem.Expr{ .Call = try copy(mem, ret) };
+            return atem.Expr{ .Call = try zut.copy(mem, ret) };
         },
 
         else => {
@@ -86,7 +87,8 @@ fn exprFromJson(mem: *std.mem.Allocator, from: *const std.json.Value, curFnNumAr
 }
 
 fn postLoadPreProcess(prog: atem.Prog, i: usize) void {
-    std.debug.warn("\n\n{}\t{}\n\t{}\n", .{ i, prog[i].Meta[0], prog[i].Body });
+    std.debug.warn("\n{}\t{}\n\t{}\n", .{ i, prog[i].Meta[0], prog[i].Body });
+    if (true) return;
     const fd = &prog[i];
     fd.isMereAlias = false;
     fd.selector = 0;
@@ -141,25 +143,5 @@ fn detectAndMarkClosures(prog: atem.Prog, it: atem.Expr) atem.Expr {
         }
     }
 
-    return ret;
-}
-
-inline fn asP(comptime tag: var, scrutinee: var) !*const std.meta.TagPayloadType(std.json.Value, tag) {
-    switch (scrutinee.*) {
-        tag => |*ok| return ok,
-        else => return error.BadJsonSrc,
-    }
-}
-
-inline fn asV(comptime tag: var, scrutinee: var) !std.meta.TagPayloadType(std.json.Value, tag) {
-    switch (scrutinee.*) {
-        tag => |ok| return ok,
-        else => return error.BadJsonSrc,
-    }
-}
-
-inline fn copy(mem: *std.mem.Allocator, it: var) !*@TypeOf(it) {
-    var ret = try mem.create(@TypeOf(it));
-    ret.* = it;
     return ret;
 }
