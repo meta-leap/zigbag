@@ -26,8 +26,8 @@ pub inline fn asV(comptime tag: var, scrutinee: var) !std.meta.TagPayloadType(st
 
 pub inline fn uIs(comptime TUnion: type, comptime tag: var, it: TUnion) ?std.meta.TagPayloadType(TUnion, tag) {
     switch (it) {
-        else => return null,
         tag => |ok| return ok,
+        else => return null,
     }
 }
 

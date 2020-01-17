@@ -41,7 +41,7 @@ fn fromJson(mem: *std.mem.Allocator, top_level: []const std.json.Value) !atem.Pr
     return prog;
 }
 
-fn exprFromJson(mem: *std.mem.Allocator, from: *const std.json.Value, curFnNumArgs: isize) anyerror!atem.Expr {
+fn exprFromJson(mem: *std.mem.Allocator, from: *const std.json.Value, curFnNumArgs: isize) (error{BadJsonSrc} || std.mem.Allocator.Error || std.fmt.ParseUnsignedError)!atem.Expr {
     switch (from.*) {
         std.json.Value.Integer => |int| {
             return atem.Expr{ .NumInt = int };

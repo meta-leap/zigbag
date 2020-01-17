@@ -18,7 +18,7 @@ pub const OpCode = enum {
     Eval = -4242,
 };
 
-pub const StdFunc = enum {
+pub const StdFunc = enum(isize) {
     Id = 0,
     True = 1,
     False = 2,
@@ -57,6 +57,12 @@ pub const FuncDef = struct {
     }
 };
 
+pub const ExprCall = struct {
+    Callee: Expr,
+    Args: []Expr,
+    IsClosure: u8 = 0,
+};
+
 pub const Expr = union(enum) {
     NumInt: isize,
     ArgRef: isize,
@@ -91,12 +97,48 @@ pub const Expr = union(enum) {
             },
         }
     }
-};
 
-pub const ExprCall = struct {
-    Callee: Expr,
-    Args: []Expr,
-    IsClosure: u8 = 0,
+    fn eqTo(self: Expr, cmp: Expr) bool {
+        if (std.meta.activeTag(self) == std.meta.activeTag(cmp)) switch (self) {
+            .Never => unreachable,
+            .NumInt => |n| return n == cmp.NumInt,
+            .FuncRef => |f| return f == cmp.FuncRef,
+            .ArgRef => |a| return a == cmp.ArgRef,
+            .Call => |c| {
+                if (c.Args.len == cmp.Call.Args.len and c.Callee.eqTo(cmp.Call.Callee)) {
+                    for (cmp.Call.Args) |cmparg, i|
+                        if (!cmparg.eqTo(c.Args[i]))
+                            return false;
+                    return true;
+                }
+            },
+        };
+        return false;
+    }
+
+    fn listOfExprs(self: Expr, mem: *std.mem.Allocator) !?[]Expr {
+        var list = try std.ArrayList(Expr).initCapacity(mem, 1024);
+        errdefer list.deinit();
+        var next = self;
+        while (true) {
+            switch (next) {
+                .FuncRef => |f| if (f == @enumToInt(StdFunc.Nil))
+                    return list.toOwnedSlice(),
+                .Call => |c| if (c.Args.len == 2) switch (c.Callee) {
+                    .FuncRef => |f| if (f == @enumToInt(StdFunc.Cons)) {
+                        try list.append(c.Args[1]);
+                        next = c.Args[0];
+                        continue;
+                    },
+                    else => {},
+                },
+                else => {},
+            }
+            break;
+        }
+        list.deinit();
+        return null;
+    }
 };
 
 pub fn jsonSrc(mem: *std.mem.Allocator, prog: Prog) ![]const u8 {
