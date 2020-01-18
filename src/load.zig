@@ -79,7 +79,7 @@ fn exprFromJson(mem: *std.mem.Allocator, from: *const std.json.Value, curFnNumAr
                 ret.Callee = call.Callee;
                 ret.Args = merged;
             }
-            return atem.Expr{ .Call = try zut.copy(mem, ret) };
+            return atem.Expr{ .Call = try zut.enHeap(mem, ret) };
         },
 
         else => {

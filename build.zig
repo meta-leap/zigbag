@@ -3,7 +3,7 @@ const std = @import("std");
 const Builder = @import("std").build.Builder;
 
 pub fn build(bld: *Builder) void {
-    const mode = @import("builtin").Mode.Debug; // bld.standardReleaseOptions();
+    const mode = std.builtin.Mode.Debug; // bld.standardReleaseOptions();
 
     const prog_atem = bld.addExecutable("zatem", "cmd/atem/main.zig");
     prog_atem.setBuildMode(mode);

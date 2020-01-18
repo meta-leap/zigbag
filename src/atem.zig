@@ -172,42 +172,30 @@ pub fn listToBytes(mem: *std.mem.Allocator, maybeNumList: []const Expr) !?[]cons
     return bytes;
 }
 
-pub fn listFromStr(mem: *std.mem.Allocator, str: []const u8) !Expr {
+pub fn listFrom(mem: *std.mem.Allocator, from: var) !Expr {
     var ret = Expr{ .FuncRef = @enumToInt(StdFunc.Nil) };
-    var i = str.len;
+    var i = from.len;
+    const isstr = comptime zut.isStr(@TypeOf(from));
     while (i > 0) {
         i -= 1;
-        var call = try mem.create(ExprCall);
-        call.Callee = Expr{ .FuncRef = @enumToInt(StdFunc.Cons) };
-        call.Args = try mem.alloc(Expr, 2);
-        call.Args[0] = ret;
-        call.Args[1] = Expr{ .NumInt = str[i] };
-        call.IsClosure = 2;
-        ret = Expr{ .Call = call };
-    }
-    return ret;
-}
-
-pub fn listsFromStrs(mem: *std.mem.Allocator, strs: []const []const u8) !Expr {
-    var ret = Expr{ .FuncRef = @enumToInt(StdFunc.Nil) };
-    var i = strs.len;
-    while (i > 0) {
-        i -= 1;
-        var call = try mem.create(ExprCall);
-        call.Callee = Expr{ .FuncRef = @enumToInt(StdFunc.Cons) };
-        call.Args = try mem.alloc(Expr, 2);
-        call.Args[0] = ret;
-        call.Args[1] = try listFromStr(mem, strs[i]);
-        call.IsClosure = 2;
-        ret = Expr{ .Call = call };
+        ret = Expr{
+            .Call = try zut.enHeap(mem, ExprCall{
+                .Callee = Expr{ .FuncRef = @enumToInt(StdFunc.Cons) },
+                .Args = try std.mem.dupe(mem, Expr, &[_]Expr{ ret, if (isstr)
+                    (Expr{ .NumInt = from[i] })
+                else
+                    try listFrom(mem, from[i]) }),
+                .IsClosure = 2,
+            }),
+        };
     }
     return ret;
 }
 
 pub fn jsonSrc(mem: *std.mem.Allocator, prog: Prog) ![]const u8 {
-    var tmp1 = try listFromStr(mem, "HolaWot");
-    var tmp2 = try listsFromStrs(mem, &[_][]const u8{ "hello", "world" });
     var tmp = try Expr.Never.listOfExprsToStr(mem);
+    var tmp3 = try listFrom(mem, "MooHaha");
+    var tmp4 = try listFrom(mem, &[_][]const u8{ "hello", "world" });
 
     var buf = &try std.Buffer.initCapacity(mem, 64 * 1024);
     defer buf.deinit();

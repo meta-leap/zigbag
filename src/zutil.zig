@@ -4,7 +4,18 @@ pub fn fmtTo(buf: *std.Buffer, comptime fmt: []const u8, args: var) !void {
     return std.fmt.format(buf, @TypeOf(std.Buffer.append).ReturnType.ErrorSet, std.Buffer.append, fmt, args);
 }
 
-pub inline fn copy(mem: *std.mem.Allocator, it: var) !*@TypeOf(it) {
+pub inline fn isStr(comptime it: type) bool {
+    return (u8 == std.meta.Child(it)) or switch (@typeInfo(it)) {
+        else => false,
+        std.builtin.TypeId.Array => |t0| (t0.child == u8),
+        std.builtin.TypeId.Pointer => |t1| switch (@typeInfo(t1.child)) {
+            else => false,
+            std.builtin.TypeId.Array => |t2| (t2.child == u8),
+        },
+    };
+}
+
+pub inline fn enHeap(mem: *std.mem.Allocator, it: var) !*@TypeOf(it) {
     var ret = try mem.create(@TypeOf(it));
     ret.* = it;
     return ret;
