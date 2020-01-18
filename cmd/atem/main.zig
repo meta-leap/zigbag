@@ -12,7 +12,29 @@ pub fn main() !void {
     const srcfiletext = try mem.allocator.alloc(u8, (try srcfile.stat()).size);
     _ = try srcfile.inStream().stream.readFull(srcfiletext);
 
-    std.debug.warn("{s}\n\n", .{srcfiletext});
     const prog = try atem.load.FromJson(&mem, srcfiletext);
+    const osargs = try mem.allocator.alloc([]const u8, std.os.argv.len - 2);
+    for (osargs) |_, i|
+        osargs[i] = std.mem.toSlice(u8, std.os.argv[i + 2]);
+    const osenv = try mem.allocator.alloc([]const u8, std.os.environ.len);
+    for (osenv) |_, i|
+        osenv[i] = std.mem.toSlice(u8, std.os.environ[i]);
+
     std.debug.warn("\n\n{s}\n\n", .{atem.jsonSrc(&mem.allocator, prog)});
+    for (osargs) |arg, i|
+        std.debug.warn("{}\t{s}\n", .{ isStr(@TypeOf(arg)), arg });
+    // const envlist = osenv.listOfExprs(mem.allocator);
+    for (osenv) |env, i|
+        std.debug.warn("{}\t{s}\n", .{ isStr(@TypeOf(env)), env });
+}
+
+pub inline fn isStr(comptime it: type) bool {
+    return switch (@typeInfo(it)) {
+        std.builtin.TypeId.Array => |ta| u8 == ta.child,
+        std.builtin.TypeId.Pointer => |tp| u8 == tp.child or switch (@typeInfo(tp.child)) {
+            std.builtin.TypeId.Array => |tpa| u8 == tpa.child,
+            else => false,
+        },
+        else => false,
+    };
 }

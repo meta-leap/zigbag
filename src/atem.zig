@@ -193,10 +193,6 @@ pub fn listFrom(mem: *std.mem.Allocator, from: var) !Expr {
 }
 
 pub fn jsonSrc(mem: *std.mem.Allocator, prog: Prog) ![]const u8 {
-    var tmp = try Expr.Never.listOfExprsToStr(mem);
-    var tmp3 = try listFrom(mem, "MooHaha");
-    var tmp4 = try listFrom(mem, &[_][]const u8{ "hello", "world" });
-
     var buf = &try std.Buffer.initCapacity(mem, 64 * 1024);
     defer buf.deinit();
     try buf.append("[ ");
