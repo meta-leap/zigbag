@@ -26,8 +26,8 @@ pub fn eval(mem: *std.mem.Allocator, prog: Prog, expr: Expr, frames_capacity: us
             var parent = &frames.items[idx_frame - 1];
             parent.stash[parent.pos] = cur.stash[idx_callee];
             cur = parent;
-            // TODO
         };
+        return error.TODO;
     }
 
     return frames.items[0].stash[0];
