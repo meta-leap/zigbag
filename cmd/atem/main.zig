@@ -6,6 +6,9 @@ pub fn main() !void {
     var mem = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer mem.deinit();
 
+    if (std.os.argv.len <= 1)
+        return error.ExpectedFilePathArgButMissing;
+
     const osargs = try mem.allocator.alloc([]const u8, std.os.argv.len - 2);
     const osenv = try mem.allocator.alloc([]const u8, std.os.environ.len);
     for (osargs) |_, i|
