@@ -178,16 +178,8 @@ pub fn listFrom(mem: *std.mem.Allocator, from: var) !Expr {
     const isstr = comptime zut.isStr(@TypeOf(from));
     while (i > 0) {
         i -= 1;
-        ret = Expr{
-            .Call = try zut.enHeap(mem, ExprCall{
-                .Callee = Expr{ .FuncRef = @enumToInt(StdFunc.Cons) },
-                .Args = try std.mem.dupe(mem, Expr, &[_]Expr{ ret, if (isstr)
-                    (Expr{ .NumInt = from[i] })
-                else
-                    try listFrom(mem, from[i]) }),
-                .IsClosure = 2,
-            }),
-        };
+        const args = try std.mem.dupe(mem, Expr, &[_]Expr{ ret, if (isstr) (Expr{ .NumInt = from[i] }) else try listFrom(mem, from[i]) });
+        ret = Expr{ .Call = try zut.enHeap(mem, ExprCall{ .Callee = Expr{ .FuncRef = @enumToInt(StdFunc.Cons) }, .Args = args, .IsClosure = 2 }) };
     }
     return ret;
 }

@@ -19,22 +19,11 @@ pub fn main() !void {
     const osenv = try mem.allocator.alloc([]const u8, std.os.environ.len);
     for (osenv) |_, i|
         osenv[i] = std.mem.toSlice(u8, std.os.environ[i]);
+    const argslist = try atem.listFrom(&mem.allocator, osargs);
+    const envlist = try atem.listFrom(&mem.allocator, osenv);
 
     std.debug.warn("\n\n{s}\n\n", .{atem.jsonSrc(&mem.allocator, prog)});
-    for (osargs) |arg, i|
-        std.debug.warn("{}\t{s}\n", .{ isStr(@TypeOf(arg)), arg });
-    // const envlist = osenv.listOfExprs(mem.allocator);
-    for (osenv) |env, i|
-        std.debug.warn("{}\t{s}\n", .{ isStr(@TypeOf(env)), env });
-}
-
-pub inline fn isStr(comptime it: type) bool {
-    return switch (@typeInfo(it)) {
-        std.builtin.TypeId.Array => |ta| u8 == ta.child,
-        std.builtin.TypeId.Pointer => |tp| u8 == tp.child or switch (@typeInfo(tp.child)) {
-            std.builtin.TypeId.Array => |tpa| u8 == tpa.child,
-            else => false,
-        },
-        else => false,
-    };
+    const tmpenv = try envlist.listOfExprs(&mem.allocator);
+    if (tmpenv) |list| for (list) |expr, i|
+        std.debug.warn("{}\t{}\n", .{ i, try expr.listOfExprsToStr(&mem.allocator) });
 }
