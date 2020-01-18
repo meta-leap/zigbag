@@ -20,7 +20,7 @@ pub fn main() !void {
     defer srcfile.close();
     const srcfiletext = try mem.allocator.alloc(u8, (try srcfile.stat()).size);
     _ = try srcfile.inStream().stream.readFull(srcfiletext);
-    const prog = try atem.load.FromJson(&mem, srcfiletext);
+    const prog = try atem.LoadFromJson(&mem, srcfiletext);
 
     const expr = atem.Expr{
         .Call = &atem.ExprCall{
@@ -28,7 +28,7 @@ pub fn main() !void {
             .Args = &[_]atem.Expr{ envlist, argslist },
         },
     };
-    const outexpr = expr;
+    const outexpr = try expr.eval(&mem, prog, true);
     if (try outexpr.listOfExprs(&mem.allocator)) |outlist| {
         const outbytes = try atem.listToBytes(&mem.allocator, outlist);
     } else

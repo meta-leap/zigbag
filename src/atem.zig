@@ -1,8 +1,7 @@
 const std = @import("std");
-const zut = @import("./zutil.zig");
+usingnamespace @import("./zutil.zig");
 
-pub const load = @import("./load.zig");
-
+pub const LoadFromJson = @import("./load.zig").FromJson;
 pub const Prog = []const FuncDef;
 
 pub const OpCode = enum {
@@ -71,19 +70,24 @@ pub const Expr = union(enum) {
     Never: void,
 
     inline fn is(self: Expr, comptime tag: var) ?std.meta.TagPayloadType(Expr, tag) {
-        return zut.uIs(Expr, tag, self);
+        return uIs(Expr, tag, self);
     }
 
     inline fn isnt(self: Expr, comptime tag: var) bool {
-        return zut.uIsnt(Expr, tag, self);
+        return uIsnt(Expr, tag, self);
+    }
+
+    fn eval(self: Expr, memArena: *std.heap.ArenaAllocator, prog: Prog, big: bool) !Expr {
+        var framescapacity: usize = if (!big) 64 else (32 * 1024);
+        return @import("./eval.zig").eval(&memArena.allocator, prog, self, framescapacity);
     }
 
     fn jsonSrc(self: Expr, buf: *std.Buffer) @TypeOf(std.Buffer.append).ReturnType.ErrorSet!void {
         switch (self) {
             .Never => try buf.append("null"),
-            .NumInt => |n| try zut.fmtTo(buf, "{d}", .{n}),
-            .ArgRef => |a| try zut.fmtTo(buf, "\"{d}\"", .{(-a) - 2}),
-            .FuncRef => |f| try zut.fmtTo(buf, "[{d}]", .{f}),
+            .NumInt => |n| try fmtTo(buf, "{d}", .{n}),
+            .ArgRef => |a| try fmtTo(buf, "\"{d}\"", .{(-a) - 2}),
+            .FuncRef => |f| try fmtTo(buf, "[{d}]", .{f}),
             .Call => |c| {
                 try buf.appendByte('[');
                 try c.Callee.jsonSrc(buf);
@@ -118,12 +122,12 @@ pub const Expr = union(enum) {
 
     fn deinitFrom(self: *const Expr, mem: *std.mem.Allocator) void {
         switch (self.*) {
-            .Call => |c| {
-                c.Callee.deinitFrom(mem);
-                for (c.Args) |argval|
+            .Call => |call| {
+                call.Callee.deinitFrom(mem);
+                for (call.Args) |argval|
                     argval.deinitFrom(mem);
-                mem.free(c.Args);
-                mem.destroy(c);
+                mem.free(call.Args);
+                mem.destroy(call);
             },
             else => {},
         }
@@ -175,11 +179,11 @@ pub fn listToBytes(mem: *std.mem.Allocator, maybeNumList: []const Expr) !?[]cons
 pub fn listFrom(mem: *std.mem.Allocator, from: var) !Expr {
     var ret = Expr{ .FuncRef = @enumToInt(StdFunc.Nil) };
     var i = from.len;
-    const isstr = comptime zut.isStr(@TypeOf(from));
+    const isstr = comptime isStr(@TypeOf(from));
     while (i > 0) {
         i -= 1;
         const args = try std.mem.dupe(mem, Expr, &[_]Expr{ ret, if (isstr) (Expr{ .NumInt = from[i] }) else try listFrom(mem, from[i]) });
-        ret = Expr{ .Call = try zut.enHeap(mem, ExprCall{ .Callee = Expr{ .FuncRef = @enumToInt(StdFunc.Cons) }, .Args = args, .IsClosure = 2 }) };
+        ret = Expr{ .Call = try enHeap(mem, ExprCall{ .Callee = Expr{ .FuncRef = @enumToInt(StdFunc.Cons) }, .Args = args, .IsClosure = 2 }) };
     }
     return ret;
 }
