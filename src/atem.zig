@@ -184,17 +184,25 @@ pub fn listFrom(mem: *std.mem.Allocator, from: var) !Expr {
     return ret;
 }
 
-pub fn jsonSrc(mem: *std.mem.Allocator, prog: Prog) ![]const u8 {
+pub fn jsonSrc(mem: *std.mem.Allocator, it: var) ![]const u8 {
     var buf = &try std.Buffer.initCapacity(mem, 64 * 1024);
     defer buf.deinit();
-    try buf.append("[ ");
-    var i: usize = 0;
-    while (i < prog.len) : (i += 1) {
-        if (i > 0)
-            try buf.append(", ");
-        try prog[i].jsonSrc(buf, false);
-        try buf.appendByte('\n');
+    if (@TypeOf(it) == Expr)
+        try it.jsonSrc(buf)
+    else if (@TypeOf(it) == *FuncDef)
+        try it.jsonSrc(buf, false)
+    else if (@TypeOf(it) == FuncDef)
+        try it.jsonSrc(buf, false)
+    else { // it must be of type `Prog`
+        try buf.append("[ ");
+        var i: usize = 0;
+        while (i < it.len) : (i += 1) {
+            if (i > 0)
+                try buf.append(", ");
+            try it[i].jsonSrc(buf, false);
+            try buf.appendByte('\n');
+        }
+        try buf.append("]\n");
     }
-    try buf.append("]\n");
     return buf.toOwnedSlice();
 }
