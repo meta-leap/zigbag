@@ -188,10 +188,19 @@ pub fn listFromStr(mem: *std.mem.Allocator, str: []const u8) Expr {
     return ret;
 }
 
-var tmp2 = listFromStr("foo");
-var tmp = try Expr.Never.listOfExprsToStr(mem);
+pub fn listsFromStrs(mem: *std.mem.Allocator, strs: []const []const u8) Expr {
+    var ret = Expr{ .FuncRef = @enumToInt(StdFunc.Nil) };
+    var i = strs.len;
+    while (i > 0) {
+        i -= 1;
+    }
+    return ret;
+}
 
 pub fn jsonSrc(mem: *std.mem.Allocator, prog: Prog) ![]const u8 {
+    var tmp2 = listsFromStrs(mem, &[_][]const u8{ "hello", "world" });
+    var tmp = try Expr.Never.listOfExprsToStr(mem);
+
     var buf = &try std.Buffer.initCapacity(mem, 64 * 1024);
     defer buf.deinit();
     try buf.append("[ ");
