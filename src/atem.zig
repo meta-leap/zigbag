@@ -116,7 +116,7 @@ pub const Expr = union(enum) {
         return false;
     }
 
-    fn listOfExprs(self: Expr, mem: *std.mem.Allocator) !?[]Expr {
+    fn listOfExprs(self: Expr, mem: *std.mem.Allocator) !?[]const Expr {
         var list = try std.ArrayList(Expr).initCapacity(mem, 1024);
         errdefer list.deinit();
         var next = self;
@@ -130,18 +130,33 @@ pub const Expr = union(enum) {
                         next = c.Args[0];
                         continue;
                     },
-                    else => {},
+                    else => break,
                 },
-                else => {},
+                else => break,
             }
-            break;
         }
         list.deinit();
         return null;
     }
 };
 
+pub fn listToBytes(mem: *std.mem.Allocator, maybeNumList: ?[]const Expr) !?[]const u8 {
+    if (maybeNumList) |it| {
+        var ok = false;
+        const bytes = try mem.alloc(u8, it.len);
+        defer if (!ok) mem.free(bytes);
+        for (it) |expr, i| switch (expr) {
+            .NumInt => |n| if (n < 0 or n > 255) return null else bytes[i] = @intCast(u8, n),
+            else => return null,
+        };
+        ok = true;
+        return bytes;
+    }
+    return null;
+}
+
 pub fn jsonSrc(mem: *std.mem.Allocator, prog: Prog) ![]const u8 {
+    _ = try listToBytes(mem, null);
     var buf = &try std.Buffer.initCapacity(mem, 64 * 1024);
     defer buf.deinit();
     try buf.append("[ ");
