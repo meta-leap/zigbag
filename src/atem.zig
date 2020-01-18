@@ -116,6 +116,20 @@ pub const Expr = union(enum) {
         return false;
     }
 
+    fn deinitFrom(self: *const Expr, mem: *std.mem.Allocator) void {
+        switch (self.*) {
+            .Call => |c| {
+                c.Callee.deinitFrom(mem);
+                for (c.Args) |argval|
+                    argval.deinitFrom(mem);
+                mem.free(c.Args);
+                mem.destroy(c);
+            },
+            else => {},
+        }
+        mem.destroy(self);
+    }
+
     fn listOfExprs(self: Expr, mem: *std.mem.Allocator) !?[]const Expr {
         var list = try std.ArrayList(Expr).initCapacity(mem, 1024);
         errdefer list.deinit();
@@ -130,33 +144,54 @@ pub const Expr = union(enum) {
                         next = c.Args[0];
                         continue;
                     },
-                    else => break,
+                    else => {},
                 },
-                else => break,
+                else => {},
             }
+            break;
         }
         list.deinit();
         return null;
     }
+
+    fn listOfExprsToStr(self: Expr, mem: *std.mem.Allocator) !?[]const u8 {
+        const maybenumlist = try self.listOfExprs(mem);
+        return if (maybenumlist) |it| listToBytes(mem, it) else null;
+    }
 };
 
-pub fn listToBytes(mem: *std.mem.Allocator, maybeNumList: ?[]const Expr) !?[]const u8 {
-    if (maybeNumList) |it| {
-        var ok = false;
-        const bytes = try mem.alloc(u8, it.len);
-        defer if (!ok) mem.free(bytes);
-        for (it) |expr, i| switch (expr) {
-            .NumInt => |n| if (n < 0 or n > 255) return null else bytes[i] = @intCast(u8, n),
-            else => return null,
-        };
-        ok = true;
-        return bytes;
-    }
-    return null;
+pub fn listToBytes(mem: *std.mem.Allocator, maybeNumList: []const Expr) !?[]const u8 {
+    var ok = false;
+    const bytes = try mem.alloc(u8, maybeNumList.len);
+    defer if (!ok) mem.free(bytes);
+    for (maybeNumList) |expr, i| switch (expr) {
+        .NumInt => |n| if (n < 0 or n > 255) return null else bytes[i] = @intCast(u8, n),
+        else => return null,
+    };
+    ok = true;
+    return bytes;
 }
 
+pub fn listFromStr(mem: *std.mem.Allocator, str: []const u8) Expr {
+    var ret = Expr{ .FuncRef = StdFunc.Nil };
+    var i = str.len;
+    while (i > 0) {
+        i -= 1;
+        var call = mem.create(ExprCall);
+        call.Callee = StdFunc.Cons;
+        call.Args = mem.alloc(Expr, 2);
+        call.Args[0] = ret;
+        call.Args[1] = Expr{ .NumInt = str[i] };
+        call.IsClosure = 2;
+        ret = Expr{ .Call = call };
+    }
+    return ret;
+}
+
+var tmp2 = listFromStr("foo");
+var tmp = try Expr.Never.listOfExprsToStr(mem);
+
 pub fn jsonSrc(mem: *std.mem.Allocator, prog: Prog) ![]const u8 {
-    _ = try listToBytes(mem, null);
     var buf = &try std.Buffer.initCapacity(mem, 64 * 1024);
     defer buf.deinit();
     try buf.append("[ ");

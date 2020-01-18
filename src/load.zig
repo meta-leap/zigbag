@@ -74,6 +74,8 @@ fn exprFromJson(mem: *std.mem.Allocator, from: *const std.json.Value, curFnNumAr
                 const merged = try mem.alloc(atem.Expr, ret.Args.len + call.Args.len);
                 std.mem.copy(atem.Expr, merged, ret.Args);
                 std.mem.copy(atem.Expr, merged[ret.Args.len..], call.Args);
+                // knowing that we're called by FromJson that requires an arena, we can skip these:
+                // mem.free(ret.Args); mem.free(call.Args); mem.destroy(call);
                 ret.Callee = call.Callee;
                 ret.Args = merged;
             }
