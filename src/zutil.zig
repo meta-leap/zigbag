@@ -5,8 +5,12 @@ pub fn fmtTo(buf: *std.Buffer, comptime fmt: []const u8, args: var) !void {
 }
 
 pub inline fn isStr(comptime it: type) bool {
-    return (u8 == std.meta.Child(it)) or switch (@typeInfo(it)) {
-        std.builtin.TypeId.Pointer => |ti| u8 == std.meta.Child(ti.child),
+    return switch (@typeInfo(it)) {
+        std.builtin.TypeId.Array => |ta| u8 == ta.child,
+        std.builtin.TypeId.Pointer => |tp| u8 == tp.child or switch (@typeInfo(tp.child)) {
+            std.builtin.TypeId.Array => |tpa| u8 == tpa.child,
+            else => false,
+        },
         else => false,
     };
 }
