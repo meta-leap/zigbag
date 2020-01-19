@@ -1,11 +1,12 @@
 const std = @import("std");
 usingnamespace @import("./zutil.zig");
+const atem_eval = @import("./eval.zig");
 
 pub const LoadFromJson = @import("./load.zig").FromJson;
 pub const Prog = []FuncDef;
 
-pub var handlerForOpPrt = @import("./eval.zig").handleOpPrt;
-pub var handlerForOpUnknown = @import("./eval.zig").handleOpUnknown;
+pub var handlerForOpPrt = atem_eval.handleOpPrt;
+pub var handlerForOpUnknown = atem_eval.handleOpUnknown;
 
 pub const OpCode = enum(isize) {
     Add = -1,
@@ -82,7 +83,7 @@ pub const Expr = union(enum) {
 
     fn eval(self: Expr, memArena: *std.heap.ArenaAllocator, prog: Prog, big: bool) !Expr {
         var framescapacity: usize = if (!big) 64 else (32 * 1024);
-        return @import("./eval.zig").eval(memArena, prog, self, framescapacity);
+        return atem_eval.eval(memArena, prog, self, framescapacity);
     }
 
     fn jsonSrc(self: Expr, buf: *std.Buffer) @TypeOf(std.Buffer.append).ReturnType.ErrorSet!void {

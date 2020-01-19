@@ -1,6 +1,7 @@
 const std = @import("std");
 
 usingnamespace @import("./atem.zig");
+usingnamespace @import("./zutil.zig");
 
 const Frame = struct {
     stash: std.ArrayList(Expr),
@@ -138,17 +139,42 @@ pub fn eval(memArena: *std.heap.ArenaAllocator, prog: Prog, expr: Expr, frames_c
 
         if (idx_callee != 0 and cur.pos < idx_callee) {
             if (cur.done_args) {
-                // TODO
+                {
+                    const diff = cur.num_args - idx_callee;
+                    var result = cur.stash.items[idx_callee];
+                    if (diff < 1) {
+                        cur.stash.len = cur.stash.len - 1 - cur.num_args;
+                        try cur.stash.append(result);
+                    } else if (false) {
+                        // TODO: optional micro-opt
+                    } else {
+                        const args = try std.mem.dupe(mem, Expr, cur.stash.items[0..idx_callee]);
+                        cur.stash.len = 1;
+                        cur.stash.items[0] = Expr{
+                            .Call = try enHeap(mem, ExprCall{
+                                .Callee = result,
+                                .Args = args,
+                                .IsClosure = @intCast(u8, diff),
+                            }),
+                        };
+                    }
+                }
+                cur.done_callee = false;
+                cur.done_args = false;
+                cur.num_args = 0;
+                cur.pos = if (cur.stash.len == 1) -1 else @intCast(i8, cur.stash.len) - 1;
             } else if (cur.num_args == 0) {
-                // const closure = cur.stash.items[idx_callee].Call;
-                // TODO
+                const closure = cur.stash.items[idx_callee].Call;
+                cur.stash.len = idx_callee;
+                try cur.stash.appendSlice(closure.Args);
+                try cur.stash.append(closure.Callee);
+                num_args_done = @intCast(i8, closure.Args.len);
+                cur.pos = @intCast(i8, cur.stash.len) - 1;
             } else if (cur.pos < 0 or cur.pos < idx_callee - cur.num_args) {
                 cur.pos = @intCast(i8, idx_callee);
                 cur.done_args = true;
             }
         }
-
-        return error.TODO;
     }
 
     return frames.items[0].stash.items[0];

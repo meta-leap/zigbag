@@ -26,12 +26,21 @@ pub fn main() !void {
     const prog = try atem.LoadFromJson(&mem, srcfiletext);
     std.debug.warn("\n\n{s}\n\n", .{atem.toJsonSrc(&mem.allocator, prog)});
 
-    const expr = atem.Expr{
+    var expr = atem.Expr{
         .Call = &atem.ExprCall{
-            .Callee = .Never,
+            .Callee = atem.Expr{ .FuncRef = @intCast(isize, prog.len) - 1 },
             .Args = &[_]atem.Expr{ envlist, argslist },
         },
     };
+
+    expr = atem.Expr{
+        .Call = &atem.ExprCall{
+            .IsClosure = 2,
+            .Callee = atem.Expr{ .FuncRef = @enumToInt(atem.OpCode.Add) },
+            .Args = &[_]atem.Expr{ atem.Expr{ .NumInt = 123 }, atem.Expr{ .NumInt = 321 } },
+        },
+    };
+
     const outexpr = try expr.eval(&mem, prog, true);
     if (try outexpr.listOfExprs(&mem.allocator)) |outlist| {
         const outbytes = try atem.listToBytes(&mem.allocator, outlist);
