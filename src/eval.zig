@@ -4,8 +4,8 @@ usingnamespace @import("./atem.zig");
 
 const Frame = struct {
     stash: []Expr,
-    args_frame_idx: u16 = 0,
-    pos: usize = 0,
+    args_frame: u16 = 0,
+    pos: i8 = 0,
 
     num_args: u8 = 0,
     done_args: bool = false,
@@ -26,32 +26,46 @@ pub fn eval(memArena: *std.heap.ArenaAllocator, prog: Prog, expr: Expr, frames_c
 
         while (cur.pos < 0) if (idx_frame == 0) break :restep else {
             var parent = &frames.items[idx_frame - 1];
-            parent.stash[parent.pos] = cur.stash[idx_callee];
+            parent.stash[@intCast(usize, parent.pos)] = cur.stash[idx_callee];
             cur = parent;
             frames.len -= 1;
             idx_frame -= 1;
             idx_callee = cur.stash.len - 1;
         };
 
-        switch (cur.stash[cur.pos]) {
-            .Never => cur.pos -= 1,
-
-            .NumInt => cur.pos -= 1,
+        switch (cur.stash[@intCast(usize, cur.pos)]) {
+            .Never, .NumInt => cur.pos -= 1,
 
             .ArgRef => |argref| {
                 const stash_lookup = if (cur.done_callee)
                     frames.items[idx_frame].stash
                 else
-                    frames.items[cur.args_frame_idx].stash;
-                cur.stash[cur.pos] = stash_lookup[stash_lookup.len - @intCast(usize, -argref)];
+                    frames.items[cur.args_frame].stash;
+                cur.stash[@intCast(usize, cur.pos)] = stash_lookup[stash_lookup.len - @intCast(usize, -argref)];
                 if (cur.pos == idx_callee) continue :restep else cur.pos -= 1;
             },
 
             .Call => |call| if (call.IsClosure != 0) {
                 cur.pos -= 1;
             } else {
-                const callee = call.Callee;
-                const callargs = try std.ArrayList(Expr).initCapacity(mem, 3 + call.Args.len);
+                var callee = call.Callee;
+                var callargs = try std.ArrayList(Expr).initCapacity(mem, 3 + call.Args.len);
+                while (true) switch (callee) {
+                    .Call => |subcall| {
+                        callee = subcall.Callee;
+                        try callargs.appendSlice(subcall.Args);
+                    },
+                    else => break,
+                };
+                try callargs.append(callee);
+                try frames.append(Frame{
+                    .args_frame = if (cur.done_callee) idx_frame else cur.args_frame,
+                    .pos = @intCast(i8, callargs.len) - 1,
+                    .stash = callargs.toOwnedSlice(),
+                });
+                idx_frame += 1;
+                cur = &frames.items[idx_frame];
+                continue :restep;
             },
 
             else => {},
@@ -59,7 +73,7 @@ pub fn eval(memArena: *std.heap.ArenaAllocator, prog: Prog, expr: Expr, frames_c
 
         if (idx_callee != 0 and cur.pos < idx_callee) {
             if (cur.done_args) {} else if (cur.num_args == 0) {} else if (cur.pos < 0 or cur.pos < idx_callee - cur.num_args) {
-                cur.pos = idx_callee;
+                cur.pos = @intCast(i8, idx_callee);
                 cur.done_args = true;
             }
         }
