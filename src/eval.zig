@@ -3,7 +3,7 @@ const std = @import("std");
 usingnamespace @import("./atem.zig");
 
 const Frame = struct {
-    stash: []Expr,
+    stash: std.ArrayList(Expr),
     args_frame: u16 = 0,
     pos: i8 = 0,
 
@@ -15,33 +15,33 @@ const Frame = struct {
 pub fn eval(memArena: *std.heap.ArenaAllocator, prog: Prog, expr: Expr, frames_capacity: usize) !Expr {
     const mem: *std.mem.Allocator = &memArena.allocator;
     var frames = try std.ArrayList(Frame).initCapacity(mem, frames_capacity);
-    try frames.append(Frame{ .stash = &[_]Expr{expr} });
+    try frames.append(Frame{ .stash = try std.ArrayList(Expr).initCapacity(mem, 1) });
     var idx_frame: u16 = 0;
     var idx_callee: usize = 0;
     var num_args_done: u8 = 0;
     var cur = &frames.items[0];
 
     restep: while (true) {
-        idx_callee = cur.stash.len - 1;
+        idx_callee = cur.stash.items.len - 1;
 
         while (cur.pos < 0) if (idx_frame == 0) break :restep else {
             var parent = &frames.items[idx_frame - 1];
-            parent.stash[@intCast(usize, parent.pos)] = cur.stash[idx_callee];
+            parent.stash.items[@intCast(usize, parent.pos)] = cur.stash.items[idx_callee];
             cur = parent;
             frames.len -= 1;
             idx_frame -= 1;
-            idx_callee = cur.stash.len - 1;
+            idx_callee = cur.stash.items.len - 1;
         };
 
-        switch (cur.stash[@intCast(usize, cur.pos)]) {
+        switch (cur.stash.items[@intCast(usize, cur.pos)]) {
             .Never, .NumInt => cur.pos -= 1,
 
             .ArgRef => |argref| {
                 const stash_lookup = if (cur.done_callee)
-                    frames.items[idx_frame].stash
+                    frames.items[idx_frame].stash.items
                 else
-                    frames.items[cur.args_frame].stash;
-                cur.stash[@intCast(usize, cur.pos)] = stash_lookup[stash_lookup.len - @intCast(usize, -argref)];
+                    frames.items[cur.args_frame].stash.items;
+                cur.stash.items[@intCast(usize, cur.pos)] = stash_lookup[stash_lookup.len - @intCast(usize, -argref)];
                 if (cur.pos == idx_callee) continue :restep else cur.pos -= 1;
             },
 
@@ -61,7 +61,7 @@ pub fn eval(memArena: *std.heap.ArenaAllocator, prog: Prog, expr: Expr, frames_c
                 try frames.append(Frame{
                     .args_frame = if (cur.done_callee) idx_frame else cur.args_frame,
                     .pos = @intCast(i8, callargs.len) - 1,
-                    .stash = callargs.toOwnedSlice(),
+                    .stash = callargs,
                 });
                 idx_frame += 1;
                 cur = &frames.items[idx_frame];
@@ -72,7 +72,12 @@ pub fn eval(memArena: *std.heap.ArenaAllocator, prog: Prog, expr: Expr, frames_c
         }
 
         if (idx_callee != 0 and cur.pos < idx_callee) {
-            if (cur.done_args) {} else if (cur.num_args == 0) {} else if (cur.pos < 0 or cur.pos < idx_callee - cur.num_args) {
+            if (cur.done_args) {
+                // TODO
+            } else if (cur.num_args == 0) {
+                // const closure = cur.stash.items[idx_callee].Call;
+                // TODO
+            } else if (cur.pos < 0 or cur.pos < idx_callee - cur.num_args) {
                 cur.pos = @intCast(i8, idx_callee);
                 cur.done_args = true;
             }
@@ -81,5 +86,5 @@ pub fn eval(memArena: *std.heap.ArenaAllocator, prog: Prog, expr: Expr, frames_c
         return error.TODO;
     }
 
-    return frames.items[0].stash[0];
+    return frames.items[0].stash.items[0];
 }
