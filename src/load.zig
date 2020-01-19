@@ -21,12 +21,12 @@ fn fromJson(mem: *std.mem.Allocator, top_level: []const std.json.Value) !atem.Pr
         const arrargs = try zut.asP(std.json.Value.Array, &arrfuncdef.at(1));
         prog[i].allArgsUsed = true;
         prog[i].Meta = try mem.alloc([]u8, arrmeta.len);
-        prog[i].Args = try mem.alloc(bool, arrargs.len);
+        prog[i].Args = try mem.alloc(i8, arrargs.len);
         {
             var a: usize = 0;
             while (a < arrargs.len) : (a += 1) {
                 const numused = try zut.asV(std.json.Value.Integer, &arrargs.at(a));
-                prog[i].Args[a] = (numused != 0);
+                prog[i].Args[a] = @intCast(i8, numused);
                 if (numused == 0)
                     prog[i].allArgsUsed = false;
             }
@@ -89,8 +89,6 @@ fn exprFromJson(mem: *std.mem.Allocator, from: *const std.json.Value, curFnNumAr
 }
 
 fn postLoadPreProcess(prog: atem.Prog, i: usize) void {
-    std.debug.warn("\n{}\t{}\n\t{}\n", .{ i, prog[i].Meta[0], prog[i].Body });
-    if (true) return;
     const fd = &prog[i];
     fd.isMereAlias = false;
     fd.selector = 0;

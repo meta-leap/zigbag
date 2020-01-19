@@ -2,7 +2,7 @@ const std = @import("std");
 usingnamespace @import("./zutil.zig");
 
 pub const LoadFromJson = @import("./load.zig").FromJson;
-pub const Prog = []const FuncDef;
+pub const Prog = []FuncDef;
 
 pub const OpCode = enum {
     Add = -1,
@@ -26,7 +26,7 @@ pub const StdFunc = enum(isize) {
 };
 
 pub const FuncDef = struct {
-    Args: []bool,
+    Args: []i8,
     Body: Expr,
     Meta: [][]const u8,
     selector: isize,
@@ -48,7 +48,7 @@ pub const FuncDef = struct {
         for (self.Args) |argused, i| {
             if (i > 0)
                 try buf.appendByte(',');
-            try buf.appendByte(if (argused) '1' else '0');
+            try fmtTo(buf, "{d}", .{argused});
         }
         try buf.append("],\n\t\t");
         try self.Body.jsonSrc(buf);
@@ -66,7 +66,7 @@ pub const Expr = union(enum) {
     NumInt: isize,
     ArgRef: isize,
     FuncRef: isize,
-    Call: *const ExprCall,
+    Call: *ExprCall,
     Never: void,
 
     inline fn is(self: Expr, comptime tag: var) ?std.meta.TagPayloadType(Expr, tag) {
@@ -191,13 +191,14 @@ pub fn listFrom(mem: *std.mem.Allocator, from: var) !Expr {
 pub fn jsonSrc(mem: *std.mem.Allocator, it: var) ![]const u8 {
     var buf = &try std.Buffer.initCapacity(mem, 64 * 1024);
     defer buf.deinit();
-    if (@TypeOf(it) == Expr)
+    const T = comptime @TypeOf(it);
+    if (T == Expr)
         try it.jsonSrc(buf)
-    else if (@TypeOf(it) == *FuncDef)
+    else if (T == *FuncDef)
         try it.jsonSrc(buf, false)
-    else if (@TypeOf(it) == FuncDef)
+    else if (T == FuncDef)
         try it.jsonSrc(buf, false)
-    else { // it must be of type `Prog`
+    else if (T == Prog) {
         try buf.append("[ ");
         var i: usize = 0;
         while (i < it.len) : (i += 1) {
@@ -207,6 +208,7 @@ pub fn jsonSrc(mem: *std.mem.Allocator, it: var) ![]const u8 {
             try buf.appendByte('\n');
         }
         try buf.append("]\n");
-    }
+    } else
+        @compileError("badly-typed arg to jsonSrc: cannot handle " ++ @typeName(T) ++ " values");
     return buf.toOwnedSlice();
 }

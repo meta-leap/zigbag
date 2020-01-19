@@ -16,13 +16,14 @@ pub fn eval(memArena: *std.heap.ArenaAllocator, prog: Prog, expr: Expr, frames_c
     const mem: *std.mem.Allocator = &memArena.allocator;
     var frames = try std.ArrayList(Frame).initCapacity(mem, frames_capacity);
     try frames.append(Frame{ .stash = try std.ArrayList(Expr).initCapacity(mem, 1) });
+    var cur = &frames.items[0];
+    try cur.stash.append(expr);
     var idx_frame: u16 = 0;
     var idx_callee: usize = 0;
-    var num_args_done: u8 = 0;
-    var cur = &frames.items[0];
+    var num_args_done: i8 = 0;
 
     restep: while (true) {
-        idx_callee = cur.stash.items.len - 1;
+        idx_callee = cur.stash.len - 1;
 
         while (cur.pos < 0) if (idx_frame == 0) break :restep else {
             var parent = &frames.items[idx_frame - 1];
@@ -30,26 +31,26 @@ pub fn eval(memArena: *std.heap.ArenaAllocator, prog: Prog, expr: Expr, frames_c
             cur = parent;
             frames.len -= 1;
             idx_frame -= 1;
-            idx_callee = cur.stash.items.len - 1;
+            idx_callee = cur.stash.len - 1;
         };
 
         switch (cur.stash.items[@intCast(usize, cur.pos)]) {
             .Never, .NumInt => cur.pos -= 1,
 
-            .ArgRef => |argref| {
+            .ArgRef => |it| {
                 const stash_lookup = if (cur.done_callee)
                     frames.items[idx_frame].stash.items
                 else
                     frames.items[cur.args_frame].stash.items;
-                cur.stash.items[@intCast(usize, cur.pos)] = stash_lookup[stash_lookup.len - @intCast(usize, -argref)];
+                cur.stash.items[@intCast(usize, cur.pos)] = stash_lookup[stash_lookup.len - @intCast(usize, -it)];
                 if (cur.pos == idx_callee) continue :restep else cur.pos -= 1;
             },
 
-            .Call => |call| if (call.IsClosure != 0) {
+            .Call => |it| if (it.IsClosure != 0) {
                 cur.pos -= 1;
             } else {
-                var callee = call.Callee;
-                var callargs = try std.ArrayList(Expr).initCapacity(mem, 3 + call.Args.len);
+                var callee = it.Callee;
+                var callargs = try std.ArrayList(Expr).initCapacity(mem, 3 + it.Args.len);
                 while (true) switch (callee) {
                     .Call => |subcall| {
                         callee = subcall.Callee;
@@ -68,7 +69,47 @@ pub fn eval(memArena: *std.heap.ArenaAllocator, prog: Prog, expr: Expr, frames_c
                 continue :restep;
             },
 
-            else => {},
+            .FuncRef => |it| if (cur.done_callee or cur.pos != idx_callee) {
+                cur.pos -= 1;
+            } else {
+                const maybefuncdef = if (it < 0) null else &prog[@intCast(usize, it)];
+                if (cur.num_args == 0) {
+                    cur.num_args = 2;
+                    var allargsused = true;
+                    if (maybefuncdef) |f| {
+                        cur.num_args = @intCast(u8, f.Args.len);
+                        allargsused = f.allArgsUsed;
+                        // TODO: optional micro-opt
+                    }
+                    if (cur.num_args == 0) {
+                        const call = maybefuncdef.?.Body.Call;
+                        cur.stash.len = idx_callee;
+                        try cur.stash.appendSlice(call.Args);
+                        try cur.stash.append(call.Callee);
+                        cur.pos = @intCast(i8, cur.stash.len - 1);
+                        if (call.IsClosure == 0) {
+                            num_args_done = 0;
+                        } else {
+                            num_args_done += @intCast(i8, call.Args.len);
+                        }
+                        continue :restep;
+                    } else if (!allargsused) {
+                        const until = if (cur.num_args < idx_callee) cur.num_args else idx_callee;
+                        const func = maybefuncdef.?;
+                        var i = @intCast(usize, num_args_done);
+                        while (i < until) : (i += 1) if (0 == func.Args[i]) {
+                            cur.stash.items[cur.stash.len - (2 + i)] = Expr{ .Never = undefined };
+                        };
+                    }
+                    cur.pos -= (1 + num_args_done);
+                    num_args_done = 0;
+                } else if (cur.stash.len > cur.num_args) {
+                    //TODO
+                } else
+                    cur.pos -= 1;
+            },
+
+            else => unreachable,
         }
 
         if (idx_callee != 0 and cur.pos < idx_callee) {
