@@ -63,7 +63,7 @@ pub const FuncDef = struct {
 pub const ExprCall = struct {
     Callee: Expr,
     Args: []Expr,
-    IsClosure: u8 = 0,
+    IsClosure: usize = 0, // u8
 };
 
 pub const Expr = union(enum) {
