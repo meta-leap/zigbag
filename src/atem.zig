@@ -4,7 +4,9 @@ usingnamespace @import("./zutil.zig");
 pub const LoadFromJson = @import("./load.zig").FromJson;
 pub const Prog = []FuncDef;
 
-pub const OpCode = enum {
+pub var handlerForOpPrt: fn (*std.mem.Allocator, []const u8, Expr) void = @import("./eval.zig").handleOpPrt;
+
+pub const OpCode = enum(isize) {
     Add = -1,
     Sub = -2,
     Mul = -3,
@@ -104,18 +106,18 @@ pub const Expr = union(enum) {
 
     fn eqTo(self: Expr, cmp: Expr) bool {
         if (std.meta.activeTag(self) == std.meta.activeTag(cmp)) switch (self) {
-            .Never => unreachable,
             .NumInt => |n| return n == cmp.NumInt,
-            .FuncRef => |f| return f == cmp.FuncRef,
-            .ArgRef => |a| return a == cmp.ArgRef,
             .Call => |c| {
                 if (c.Args.len == cmp.Call.Args.len and c.Callee.eqTo(cmp.Call.Callee)) {
-                    for (cmp.Call.Args) |cmparg, i|
-                        if (!cmparg.eqTo(c.Args[i]))
+                    for (cmp.Call.Args) |_, i|
+                        if (!c.Args[i].eqTo(cmp.Call.Args[i]))
                             return false;
                     return true;
                 }
             },
+            .ArgRef => |a| return a == cmp.ArgRef,
+            .FuncRef => |f| return f == cmp.FuncRef,
+            .Never => unreachable,
         };
         return false;
     }
@@ -158,9 +160,10 @@ pub const Expr = union(enum) {
         return null;
     }
 
-    fn listOfExprsToStr(self: Expr, mem: *std.mem.Allocator) !?[]const u8 {
+    fn listOfExprsToStr(self: Expr, mem: *std.mem.Allocator) ![]const u8 {
         const maybenumlist = try self.listOfExprs(mem);
-        return if (maybenumlist) |it| listToBytes(mem, it) else null;
+        if (maybenumlist) |it| if (try listToBytes(mem, it)) |ret| return ret;
+        return try toJsonSrc(mem, self);
     }
 };
 
@@ -188,7 +191,7 @@ pub fn listFrom(mem: *std.mem.Allocator, from: var) !Expr {
     return ret;
 }
 
-pub fn jsonSrc(mem: *std.mem.Allocator, it: var) ![]const u8 {
+pub fn toJsonSrc(mem: *std.mem.Allocator, it: var) ![]const u8 {
     var buf = &try std.Buffer.initCapacity(mem, 64 * 1024);
     defer buf.deinit();
     const T = comptime @TypeOf(it);
@@ -209,6 +212,6 @@ pub fn jsonSrc(mem: *std.mem.Allocator, it: var) ![]const u8 {
         }
         try buf.append("]\n");
     } else
-        @compileError("badly-typed arg to jsonSrc: cannot handle " ++ @typeName(T) ++ " values");
+        @compileError("badly-typed arg to toJsonSrc: cannot handle " ++ @typeName(T) ++ " values");
     return buf.toOwnedSlice();
 }

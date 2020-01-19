@@ -98,13 +98,34 @@ pub fn eval(memArena: *std.heap.ArenaAllocator, prog: Prog, expr: Expr, frames_c
                         const func = maybefuncdef.?;
                         var i = @intCast(usize, num_args_done);
                         while (i < until) : (i += 1) if (0 == func.Args[i]) {
-                            cur.stash.items[cur.stash.len - (2 + i)] = Expr{ .Never = undefined };
+                            cur.stash.items[cur.stash.len - (2 + i)] = Expr.Never;
                         };
                     }
                     cur.pos -= (1 + num_args_done);
                     num_args_done = 0;
                 } else if (cur.stash.len > cur.num_args) {
-                    //TODO
+                    var result: Expr = undefined;
+                    if (maybefuncdef) |func| {
+                        result = func.Body;
+                    } else {
+                        const oplhs = cur.stash.items[cur.stash.len - 2];
+                        const oprhs = cur.stash.items[cur.stash.len - 3];
+                        switch (@intToEnum(OpCode, it)) {
+                            .Add => result = Expr{ .NumInt = oplhs.NumInt + oprhs.NumInt },
+                            .Sub => result = Expr{ .NumInt = oplhs.NumInt - oprhs.NumInt },
+                            .Mul => result = Expr{ .NumInt = oplhs.NumInt * oprhs.NumInt },
+                            .Div => result = Expr{ .NumInt = @divTrunc(oplhs.NumInt, oprhs.NumInt) },
+                            .Mod => result = Expr{ .NumInt = @mod(oplhs.NumInt, oprhs.NumInt) },
+                            .Eq => result = Expr{ .FuncRef = @enumToInt(if (oplhs.eqTo(oprhs)) StdFunc.True else StdFunc.False) },
+                            .Gt => result = Expr{ .FuncRef = @enumToInt(if (oplhs.NumInt > oprhs.NumInt) StdFunc.True else StdFunc.False) },
+                            .Lt => result = Expr{ .FuncRef = @enumToInt(if (oplhs.NumInt < oprhs.NumInt) StdFunc.True else StdFunc.False) },
+                            .Prt => {
+                                result = oprhs;
+                                handlerForOpPrt(mem, try oplhs.listOfExprsToStr(mem), oprhs);
+                            },
+                            else => return error.UnknownOpCode,
+                        }
+                    }
                 } else
                     cur.pos -= 1;
             },
@@ -128,4 +149,8 @@ pub fn eval(memArena: *std.heap.ArenaAllocator, prog: Prog, expr: Expr, frames_c
     }
 
     return frames.items[0].stash.items[0];
+}
+
+pub fn handleOpPrt(mem: *std.mem.Allocator, msg: []const u8, result: Expr) void {
+    std.debug.warn("{s}\t{s}\n", .{ msg, result.listOfExprsToStr(mem) });
 }

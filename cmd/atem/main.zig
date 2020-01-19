@@ -24,7 +24,7 @@ pub fn main() !void {
     const srcfiletext = try mem.allocator.alloc(u8, (try srcfile.stat()).size);
     _ = try srcfile.inStream().stream.readFull(srcfiletext);
     const prog = try atem.LoadFromJson(&mem, srcfiletext);
-    std.debug.warn("\n\n{s}\n\n", .{atem.jsonSrc(&mem.allocator, prog)});
+    std.debug.warn("\n\n{s}\n\n", .{atem.toJsonSrc(&mem.allocator, prog)});
 
     const expr = atem.Expr{
         .Call = &atem.ExprCall{
@@ -36,5 +36,5 @@ pub fn main() !void {
     if (try outexpr.listOfExprs(&mem.allocator)) |outlist| {
         const outbytes = try atem.listToBytes(&mem.allocator, outlist);
     } else
-        std.debug.warn("RET-EXPR:\t{s}\n", .{try atem.jsonSrc(&mem.allocator, outexpr)});
+        std.debug.warn("RET-EXPR:\t{s}\n", .{try atem.toJsonSrc(&mem.allocator, outexpr)});
 }
