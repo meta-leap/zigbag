@@ -79,7 +79,7 @@ pub const Expr = union(enum) {
 
     fn eval(self: Expr, memArena: *std.heap.ArenaAllocator, prog: Prog, big: bool) !Expr {
         var framescapacity: usize = if (!big) 64 else (32 * 1024);
-        return @import("./eval.zig").eval(&memArena.allocator, prog, self, framescapacity);
+        return @import("./eval.zig").eval(memArena, prog, self, framescapacity);
     }
 
     fn jsonSrc(self: Expr, buf: *std.Buffer) @TypeOf(std.Buffer.append).ReturnType.ErrorSet!void {
