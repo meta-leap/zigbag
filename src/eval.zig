@@ -123,9 +123,12 @@ pub fn eval(memArena: *std.heap.ArenaAllocator, prog: Prog, expr: Expr, frames_c
                                 result = oprhs;
                                 handlerForOpPrt(mem, try oplhs.listOfExprsToStr(mem), oprhs);
                             },
-                            else => return error.UnknownOpCode,
+                            else => result = try handlerForOpUnknown(mem, it, oplhs, oprhs),
                         }
                     }
+                    cur.done_callee = true;
+                    cur.stash.items[idx_callee] = result;
+                    continue :restep;
                 } else
                     cur.pos -= 1;
             },
@@ -149,6 +152,10 @@ pub fn eval(memArena: *std.heap.ArenaAllocator, prog: Prog, expr: Expr, frames_c
     }
 
     return frames.items[0].stash.items[0];
+}
+
+pub fn handleOpUnknown(mem: *std.mem.Allocator, op_code: isize, op_lhs: Expr, op_rhs: Expr) !Expr {
+    return error.EvalBadOpCode;
 }
 
 pub fn handleOpPrt(mem: *std.mem.Allocator, msg: []const u8, result: Expr) void {

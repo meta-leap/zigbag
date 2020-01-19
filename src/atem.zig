@@ -4,7 +4,8 @@ usingnamespace @import("./zutil.zig");
 pub const LoadFromJson = @import("./load.zig").FromJson;
 pub const Prog = []FuncDef;
 
-pub var handlerForOpPrt: fn (*std.mem.Allocator, []const u8, Expr) void = @import("./eval.zig").handleOpPrt;
+pub var handlerForOpPrt = @import("./eval.zig").handleOpPrt;
+pub var handlerForOpUnknown = @import("./eval.zig").handleOpUnknown;
 
 pub const OpCode = enum(isize) {
     Add = -1,
