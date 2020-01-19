@@ -24,6 +24,7 @@ pub fn eval(memArena: *std.heap.ArenaAllocator, prog: Prog, expr: Expr, frames_c
     var num_args_done: i8 = 0;
 
     restep: while (true) {
+        std.debug.warn("STEP\n", .{});
         idx_callee = cur.stash.len - 1;
 
         while (cur.pos < 0) if (idx_frame == 0) break :restep else {
