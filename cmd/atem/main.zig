@@ -33,13 +33,13 @@ pub fn main() !void {
         },
     };
 
-    expr = atem.Expr{
-        .Call = &atem.ExprCall{
-            .IsClosure = 0,
-            .Callee = atem.Expr{ .FuncRef = 1 }, // @enumToInt(atem.OpCode.Add) },
-            .Args = &[_]atem.Expr{ atem.Expr{ .NumInt = 123 }, atem.Expr{ .NumInt = 321 } },
-        },
-    };
+    // expr = atem.Expr{
+    //     .Call = &atem.ExprCall{
+    //         .IsClosure = 0,
+    //         .Callee = atem.Expr{ .FuncRef = -1 }, // @enumToInt(atem.OpCode.Add) },
+    //         .Args = &[_]atem.Expr{ atem.Expr{ .NumInt = 123 }, atem.Expr{ .NumInt = 321 } },
+    //     },
+    // };
 
     const outexpr = try expr.eval(&mem, prog, true);
     if (try outexpr.listOfExprs(&mem.allocator)) |outlist| {
