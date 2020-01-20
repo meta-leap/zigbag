@@ -124,8 +124,8 @@ pub const Expr = union(enum) {
         return false;
     }
 
-    fn deinitFrom(self: *const Expr, mem: *std.mem.Allocator) void {
-        switch (self.*) {
+    fn deinitFrom(self: Expr, mem: *std.mem.Allocator) void {
+        switch (self) {
             .Call => |call| {
                 call.Callee.deinitFrom(mem);
                 for (call.Args) |argval|
@@ -135,7 +135,6 @@ pub const Expr = union(enum) {
             },
             else => {},
         }
-        mem.destroy(self);
     }
 
     fn listOfExprs(self: Expr, mem: *std.mem.Allocator) !?[]const Expr {

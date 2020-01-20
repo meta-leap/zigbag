@@ -14,7 +14,6 @@ pub fn eval(memArena: *std.heap.ArenaAllocator, prog: Prog, expr: Expr, frames_c
         done_callee: bool = false,
     };
     const mem = &memArena.allocator;
-
     var frames = try std.ArrayList(Frame).initCapacity(mem, frames_capacity);
     var idx_frame: usize = 0; // u16
     var idx_callee: usize = 0;
@@ -27,14 +26,16 @@ pub fn eval(memArena: *std.heap.ArenaAllocator, prog: Prog, expr: Expr, frames_c
         std.debug.warn("STEP\n", .{});
         idx_callee = cur.stash.len - 1;
 
-        while (cur.pos < 0) if (idx_frame == 0) break :restep else {
-            const parent = &frames.items[idx_frame - 1];
-            parent.stash.items[@intCast(usize, parent.pos)] = cur.stash.items[idx_callee];
-            cur = parent;
-            frames.len -= 1;
-            idx_frame -= 1;
-            idx_callee = cur.stash.len - 1;
-        };
+        while (cur.pos < 0) {
+            if (idx_frame == 0) break :restep else {
+                const caller_frame = &frames.items[idx_frame - 1];
+                caller_frame.stash.items[@intCast(usize, caller_frame.pos)] = cur.stash.items[idx_callee];
+                cur = caller_frame;
+                frames.len -= 1;
+                idx_frame -= 1;
+                idx_callee = cur.stash.len - 1;
+            }
+        }
 
         switch (cur.stash.items[@intCast(usize, cur.pos)]) {
             .Never, .NumInt => cur.pos -= 1,
@@ -146,9 +147,13 @@ pub fn eval(memArena: *std.heap.ArenaAllocator, prog: Prog, expr: Expr, frames_c
                     if (diff < 1) {
                         cur.stash.len = (cur.stash.len - 1) - cur.num_args;
                         try cur.stash.append(result);
-                    } else if (false) {
-                        // TODO: optional micro-opt
                     } else {
+                        // const ilp = idx_frame - 1;
+                        // if (ilp > 0 and frames.items[ilp].num_args == 0 and frames.items[ilp].stash.len != 1 and frames.items[ilp].pos == frames.items[ilp].stash.len - 1) {
+                        //     const callee = result;
+                        //     const callargs = cur.stash.items[0..idx_callee];
+                        //     continue :restep;
+                        // } else {
                         const args = try std.mem.dupe(mem, Expr, cur.stash.items[0..idx_callee]);
                         cur.stash.len = 1;
                         cur.stash.items[0] = Expr{
@@ -158,6 +163,7 @@ pub fn eval(memArena: *std.heap.ArenaAllocator, prog: Prog, expr: Expr, frames_c
                                 .IsClosure = diff,
                             }),
                         };
+                        // }
                     }
                 }
                 cur.done_callee = false;
