@@ -14,6 +14,7 @@ pub fn eval(memArena: *std.heap.ArenaAllocator, prog: Prog, expr: Expr, frames_c
         done_callee: bool = false,
     };
     const mem = &memArena.allocator;
+
     var frames = try std.ArrayList(Frame).initCapacity(mem, frames_capacity);
     var idx_frame: usize = 0; // u16
     var idx_callee: usize = 0;
@@ -23,7 +24,6 @@ pub fn eval(memArena: *std.heap.ArenaAllocator, prog: Prog, expr: Expr, frames_c
     try cur.stash.append(expr);
 
     restep: while (true) {
-        std.debug.warn("STEP\n", .{});
         idx_callee = cur.stash.len - 1;
 
         while (cur.pos < 0) {
