@@ -9,10 +9,11 @@ pub fn main() !void {
     defer buf.deinit();
     while (true) {
         try stdin.stream.readUntilDelimiterBuffer(&buf, '\n', 987654321);
-        const inputline = buf.toOwnedSlice();
+        var inputline = buf.toOwnedSlice();
         defer mem.free(inputline);
         if (inputline.len == 0)
             break;
-        try stdout.stream.print("So you say: {s}\n", .{inputline});
+        std.mem.reverse(u8, inputline);
+        try stdout.stream.print("{s}\n", .{inputline});
     }
 }

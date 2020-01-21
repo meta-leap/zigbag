@@ -3,7 +3,8 @@ const std = @import("std");
 pub fn build(bld: *std.build.Builder) void {
     const mode = std.builtin.Mode.Debug; // bld.standardReleaseOptions();
 
-    const prog = bld.addExecutable("tmpstdioloop", "main.zig");
+    const dirname = std.fs.path.basename(bld.build_root);
+    const prog = bld.addExecutable(dirname, "main.zig");
     prog.setBuildMode(mode);
     // prog.addPackagePath("lib", "path/to/lib.zig");
     if (std.os.getenv("USER")) |username|
