@@ -1,8 +1,6 @@
 const std = @import("std");
 
-const Builder = @import("std").build.Builder;
-
-pub fn build(bld: *Builder) void {
+pub fn build(bld: *std.build.Builder) void {
     const mode = std.builtin.Mode.Debug; // bld.standardReleaseOptions();
 
     const prog_atem = bld.addExecutable("zatem", "cmd/atem/main.zig");
