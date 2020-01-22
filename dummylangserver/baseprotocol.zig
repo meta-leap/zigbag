@@ -30,10 +30,13 @@ pub fn forever(
                 try buf.ensureCapacity(content_len);
                 if (keep.len < content_len)
                     try stdin.stream.readNoEof(buf.items[keep.len .. content_len - keep.len]);
-                buf.len = content_len;
-                onFullIncomingPayload(buf.toSliceConst());
+                if (content_len > 0)
+                    onFullIncomingPayload(buf.items[0..content_len]);
+
+                const keep2 = buf.items[content_len..buf.len];
+                std.mem.copy(u8, buf.items[0..keep2.len], keep2);
+                buf.len = keep2.len;
                 got_content_length = null;
-                buf.len = 0;
             }
         }
     }
