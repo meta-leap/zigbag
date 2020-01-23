@@ -1,16 +1,12 @@
 const String = []const u8;
 
-pub const JsonObj = std.StringHashMap(JsonAny);
-
-pub const JsonArr = []JsonAny;
-
 pub const JsonAny = union(enum) {
     string: String,
     boolean: bool,
     int: isize,
     float: f64,
-    array: JsonArr,
-    object: JsonObj,
+    array: []JsonAny,
+    object: ?std.StringHashMap(JsonAny),
 };
 
 const IntOrString = union(enum) {
@@ -22,13 +18,65 @@ pub const Message = struct {
     jsonrpc: String = "2.0",
 };
 
+pub const NotificationMessage = struct {
+    Message: Message,
+
+    method__and__params: ?union(enum) {
+        in: union(enum) {
+            __cancelRequest: *CancelParams,
+            initialized: *InitializedParams,
+            exit: void,
+            workspace_didChangeWorkspaceFolders: *DidChangeWorkspaceFoldersParams,
+            workspace_didChangeConfiguration: *DidChangeConfigurationParams,
+            workspace_didChangeWatchedFiles: *DidChangeWatchedFilesParams,
+            textDocument_didOpen: *DidOpenTextDocumentParams,
+            textDocument_didChange: *DidChangeTextDocumentParams,
+            textDocument_willSave: *WillSaveTextDocumentParams,
+            textDocument_didSave: *DidSaveTextDocumentParams,
+            textDocument_didClose: *DidCloseTextDocumentParams,
+        },
+        out: union(enum) {
+            __progress: *ProgressParams,
+            window_showMessage: *ShowMessageParams,
+            window_logMessage: *LogMessageParams,
+            telemetry_event: *JsonAny,
+            textDocument_publishDiagnostics: *PublishDiagnosticsParams,
+        },
+    },
+};
+
 pub const RequestMessage = struct {
     Message: Message,
 
     id: IntOrString,
-    method: String,
-    params: ?union(enum) {
-        initialize: *InitializeParams,
+    method__and__params: ?union(enum) {
+        in: union(enum) {
+            initialize: *InitializeParams,
+            shutdown: void,
+            workspace_symbol: *WorkspaceSymbolParams,
+            workspace_executeCommand: *ExecuteCommandParams,
+            textDocument_willSaveWaitUntil: *WillSaveTextDocumentParams,
+            textDocument_completion: *CompletionParams,
+            completionItem_resolve: *CompletionItem,
+            textDocument_hover: *HoverParams,
+            textDocument_signatureHelp: *SignatureHelpParams,
+            textDocument_declaration: *DeclarationParams,
+            textDocument_definition: *DefinitionParams,
+            textDocument_typeDefinition: *TypeDefinitionParams,
+            textDocument_implementation: *ImplementationParams,
+            textDocument_references: *ReferenceParams,
+            textDocument_documentHighlight: *DocumentHighlightParams,
+            textDocument_documentSymbol: *DocumentSymbolParams,
+        },
+        out: union(enum) {
+            window_showMessageRequest: *ShowMessageRequestParams,
+            window_workDoneProgress_create: *WorkDoneProgressCreateParams,
+            client_registerCapability: *RegistrationParams,
+            client_unregisterCapability: *UnregistrationParams,
+            workspace_workspaceFolders: void,
+            workspace_configuration: *ConfigurationParams,
+            workspace_applyEdit: *ApplyWorkspaceEditParams,
+        },
     },
 };
 
@@ -37,7 +85,48 @@ pub const ResponseMessage = struct {
 
     id: ?IntOrString,
     result: ?union(enum) {
-        initialize: *InitializeResult,
+        in: union(enum) {
+            window_showMessageRequest: ?*MessageActionItem,
+            window_workDoneProgress_create: void,
+            client_registerCapability: void,
+            client_unregisterCapability: void,
+            workspace_workspaceFolders: ?[]WorkspaceFolder,
+            workspace_configuration: []JsonAny,
+            workspace_applyEdit: *ApplyWorkspaceEditResponse,
+        },
+        out: union(enum) {
+            initialize: *InitializeResult,
+            shutdown: void,
+            workspace_symbol: ?[]SymbolInformation,
+            workspace_executeCommand: ?*JsonAny,
+            textDocument_willSaveWaitUntil: ?[]TextEdit,
+            textDocument_completion: ?*CompletionList,
+            completionItem_resolve: *CompletionItem,
+            textDocument_hover: ?*Hover,
+            textDocument_signatureHelp: ?*SignatureHelp,
+            textDocument_declaration: ?union(enum) {
+                locations: []Location,
+                links: []LocationLink,
+            },
+            textDocument_definition: ?union(enum) {
+                locations: []Location,
+                links: []LocationLink,
+            },
+            textDocument_typeDefinition: ?union(enum) {
+                locations: []Location,
+                links: []LocationLink,
+            },
+            textDocument_implementation: ?union(enum) {
+                locations: []Location,
+                links: []LocationLink,
+            },
+            textDocument_references: ?[]Location,
+            textDocument_documentHighlight: ?[]DocumentHighlight,
+            textDocument_documentSymbol: ?union(enum) {
+                symbol_infos: []SymbolInformation,
+                doc_symbols: []DocumentSymbol,
+            },
+        },
     },
     error__: ?ResponseError,
 };
@@ -58,15 +147,6 @@ pub const ResponseError = struct {
         ContentModified = -32801,
     },
     message: String,
-};
-
-pub const NotificationMessage = struct {
-    Message: Message,
-
-    method: String,
-    params: ?union(enum) {
-        __cancelRequest: *CancelParams,
-    },
 };
 
 pub const CancelParams = struct {
@@ -977,7 +1057,7 @@ pub const FormattingOptions = struct {
     trimTrailingWhitespace: ?bool,
     insertFinalNewline: ?bool,
     trimFinalNewlines: ?bool,
-    __: StringHashMap(union {
+    __: StringHashMap(union(enum) {
         boolean: bool,
         number: isize,
         string: String,
@@ -1119,4 +1199,8 @@ pub const SelectionRangeParams = struct {
     PartialResultParams: PartialResultParams,
     textDocument: TextDocumentIdentifier,
     positions: []Position,
+};
+
+pub const WorkDoneProgressCreateParams = struct {
+    token: ProgressToken,
 };
