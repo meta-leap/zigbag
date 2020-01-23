@@ -1,12 +1,31 @@
+const std = @import("std");
+
 const String = []const u8;
 
+// we don't use std.json.Value union here because:
+// 1. after a full parse we want to have all the `std.json.Value`s fully
+// transformed into only such types owned in this source file.
+// 2. we also want to be able to then immediately dealloc whatever
+// std.json.Parser alloc'd, while keeping the result data for upcoming processing.
+// some of the LSP-prescribed types do contain free-form "JSON `any`-typed"
+// fields, these too should be preserved after std.json.Parser is dealloc'd.
+// 3. from current union design, every std.json.Value has a sizeOf std.HashMap, a fat struct!
 pub const JsonAny = union(enum) {
     string: String,
     boolean: bool,
-    int: isize,
+    int: i64,
     float: f64,
     array: []JsonAny,
-    object: ?std.StringHashMap(JsonAny),
+    object: ?*std.StringHashMap(JsonAny),
+
+    pub fn init(from: *std.json.Value) JsonAny {
+        switch (from) {
+            .Null => return JsonAny{ .object = null },
+            .Bool => |b| return JsonAny{ .boolean = b },
+            .Integer => |i| return JsonAny{ .int = i },
+            .Float => |f| return JsonAny{ .float = f },
+        }
+    }
 };
 
 const IntOrString = union(enum) {

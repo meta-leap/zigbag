@@ -2,7 +2,7 @@ const std = @import("std");
 
 pub fn forever(
     buf: *std.ArrayList(u8),
-    onFullIncomingPayload: fn ([]const u8) void,
+    onFullIncomingPayload: fn ([]const u8) anyerror!void,
 ) !void {
     var stdin = std.io.getStdIn().inStream();
     var got_content_length: ?usize = null;
@@ -30,8 +30,9 @@ pub fn forever(
                 try buf.ensureCapacity(content_len);
                 if (keep.len < content_len)
                     try stdin.stream.readNoEof(buf.items[keep.len .. content_len - keep.len]);
+
                 if (content_len > 0)
-                    onFullIncomingPayload(buf.items[0..content_len]);
+                    try onFullIncomingPayload(buf.items[0..content_len]);
 
                 const keep2 = buf.items[content_len..buf.len];
                 std.mem.copy(u8, buf.items[0..keep2.len], keep2);
