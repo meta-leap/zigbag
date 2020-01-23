@@ -1,12 +1,16 @@
 const String = []const u8;
 
+pub const JsonObj = std.StringHashMap(JsonAny);
+
+pub const JsonArr = []JsonAny;
+
 pub const JsonAny = union(enum) {
     string: String,
     boolean: bool,
     int: isize,
     float: f64,
-    array: []JsonAny,
-    object: std.StringHashMap(JsonAny),
+    array: JsonArr,
+    object: JsonObj,
 };
 
 const IntOrString = union(enum) {
@@ -35,23 +39,23 @@ pub const ResponseMessage = struct {
     result: ?union(enum) {
         initialize: *InitializeResult,
     },
-    err: ?ResponseError,
+    error__: ?ResponseError,
 };
 
 pub const ResponseError = struct {
     code: enum {
-        parseError = -32700,
-        invalidRequest = -32600,
-        methodNotFound = -32601,
-        invalidParams = -32602,
-        internalError = -32603,
-        serverErrorStart = -32099,
-        serverErrorEnd = -32000,
-        serverNotInitialized = -32002,
-        unknownErrorCode = -32001,
+        ParseError = -32700,
+        InvalidRequest = -32600,
+        MethodNotFound = -32601,
+        InvalidParams = -32602,
+        InternalError = -32603,
+        ServerErrorStart = -32099,
+        ServerErrorEnd = -32000,
+        ServerNotInitialized = -32002,
+        UnknownErrorCode = -32001,
 
-        requestCancelled = -32800,
-        contentModified = -32801,
+        RequestCancelled = -32800,
+        ContentModified = -32801,
     },
     message: String,
 };
@@ -63,6 +67,10 @@ pub const NotificationMessage = struct {
     params: ?union(enum) {
         __cancelRequest: *CancelParams,
     },
+};
+
+pub const CancelParams = struct {
+    id: IntOrString,
 };
 
 pub const DocumentUri = String;
@@ -92,15 +100,21 @@ pub const LocationLink = struct {
 pub const Diagnostic = struct {
     range: Range,
     severity: ?enum {
-        err = 1,
-        warning = 2,
-        information = 3,
-        hint = 4,
+        Error = 1,
+        Warning = 2,
+        Information = 3,
+        Hint = 4,
     },
     code: ?IntOrString,
     source: ?String,
     message: String,
+    tags: ?[]DiagnosticTag,
     relatedInformation: ?[]DiagnosticRelatedInformation,
+};
+
+pub const DiagnosticTag = enum {
+    Unnecessary = 1,
+    Deprecated = 2,
 };
 
 pub const DiagnosticRelatedInformation = struct {
@@ -127,6 +141,11 @@ pub const TextDocumentEdit = struct {
 pub const VersionedTextDocumentIdentifier = struct {
     TextDocumentIdentifier: TextDocumentIdentifier,
     version: ?isize,
+};
+
+pub const TextDocumentPositionParams = struct {
+    textDocument: TextDocumentIdentifier,
+    position: Position,
 };
 
 pub const TextDocumentIdentifier = struct {
@@ -192,18 +211,22 @@ pub const DocumentFilter = struct {
 
 pub const DocumentSelector = []DocumentFilter;
 
-pub const markup_kind = struct {
-    pub const plaintext = "plaintext";
-    pub const markdown = "markdown";
-};
-
 pub const MarkupContent = struct {
     kind: string,
     value: String,
+
+    pub const kind = struct {
+        pub const plaintext = "plaintext";
+        pub const markdown = "markdown";
+    };
 };
 
 pub const InitializeParams = struct {
     processId: ?isize,
+    clientInfo: ?struct {
+        name: String,
+        version: ?String,
+    },
     rootUri: ?DocumentUri,
     initializationOptions: ?JsonAny,
     capabilities: ClientCapabilities,
@@ -215,143 +238,6 @@ pub const InitializeParams = struct {
     pub const trace_verbose = "verbose";
 };
 
-pub const WorkspaceClientCapabilities = struct {
-    applyEdit: ?bool,
-    workspaceEdit: ?struct {
-        documentChanges: ?bool,
-        resourceOperations: ?[]String,
-        failureHandling: ?String,
-
-        pub const resource_operation_kind_create = "create";
-        pub const resource_operation_kind_rename = "rename";
-        pub const resource_operation_kind_delete = "delete";
-        pub const failure_handling_kind_abort = "abort";
-        pub const failure_handling_kind_transactional = "transactional";
-        pub const failure_handling_kind_undo = "undo";
-        pub const failure_handling_kind_textOnlyTransactional = "textOnlyTransactional";
-    },
-    didChangeConfiguration: ?struct {
-        dynamicRegistration: ?bool,
-    },
-    didChangeWatchedFiles: ?struct {
-        dynamicRegistration: ?bool,
-    },
-    symbol: ?struct {
-        dynamicRegistration: ?bool,
-        symbolKind: ?struct {
-            valueSet: ?[]SymbolKind,
-        },
-    },
-    executeCommand: ?struct {
-        dynamicRegistration: ?bool,
-    },
-    workspaceFolders: ?bool,
-    configuration: ?bool,
-};
-
-pub const TextDocumentClientCapabilities = struct {
-    synchronization: ?struct {
-        dynamicRegistration: ?bool,
-        willSave: ?bool,
-        willSaveWaitUntil: ?bool,
-        didSave: ?bool,
-    },
-    completion: ?struct {
-        dynamicRegistration: ?bool,
-        completionItem: ?struct {
-            snippetSupport: ?bool,
-            commitCharactersSupport: ?bool,
-            documentationFormat: ?[]String,
-            deprecatedSupport: ?bool,
-            preselectSupport: ?bool,
-        },
-        completionItemKind: ?struct {
-            valueSet: ?[]CompletionItemKind,
-        },
-        contextSupport: ?bool,
-    },
-    hover: ?struct {
-        dynamicRegistration: ?bool,
-        contentFormat: ?[]String,
-    },
-    signatureHelp: ?struct {
-        dynamicRegistration: ?bool,
-        signatureInformation: ?struct {
-            documentationFormat: ?[]String,
-            parameterInformation: ?struct {
-                labelOffsetSupport: ?bool,
-            },
-        },
-    },
-    references: ?struct {
-        dynamicRegistration: ?bool,
-    },
-    documentHighlight: ?struct {
-        dynamicRegistration: ?bool,
-    },
-    documentSymbol: ?struct {
-        dynamicRegistration: ?bool,
-        symbolKind: ?struct {
-            valueSet: ?[]SymbolKind,
-        },
-        hierarchicalDocumentSymbolSupport: ?bool,
-    },
-    formatting: ?struct {
-        dynamicRegistration: ?bool,
-    },
-    rangeFormatting: ?struct {
-        dynamicRegistration: ?bool,
-    },
-    onTypeFormatting: ?struct {
-        dynamicRegistration: ?bool,
-    },
-    declaration: ?struct {
-        dynamicRegistration: ?bool,
-        linkSupport: ?bool,
-    },
-    definition: ?struct {
-        dynamicRegistration: ?bool,
-        linkSupport: ?bool,
-    },
-    typeDefinition: ?struct {
-        dynamicRegistration: ?bool,
-        linkSupport: ?bool,
-    },
-    implementation: ?struct {
-        dynamicRegistration: ?bool,
-        linkSupport: ?bool,
-    },
-    codeAction: ?struct {
-        dynamicRegistration: ?bool,
-        codeActionLiteralSupport: ?struct {
-            codeActionKind: struct {
-                valueSet: []String,
-            },
-        },
-    },
-    codeLens: ?struct {
-        dynamicRegistration: ?bool,
-    },
-    documentLink: ?struct {
-        dynamicRegistration: ?bool,
-    },
-    colorProvider: ?struct {
-        dynamicRegistration: ?bool,
-    },
-    rename: ?struct {
-        dynamicRegistration: ?bool,
-        prepareSupport: ?bool,
-    },
-    publishDiagnostics: ?struct {
-        relatedInformation: ?bool,
-    },
-    foldingRange: ?struct {
-        dynamicRegistration: ?bool,
-        rangeLimit: ?bool,
-        lineFoldingOnly: ?bool,
-    },
-};
-
 pub const code_action_kind = struct {
     pub const quickfix = "quickfix";
     pub const refactor = "refactor";
@@ -360,6 +246,10 @@ pub const code_action_kind = struct {
     pub const refactor_rewrite = "refactor.rewrite";
     pub const source = "source";
     pub const source_organizeImports = "source.organizeImports";
+};
+
+pub const CompletionItemTag = enum {
+    Deprecated = 1,
 };
 
 pub const CompletionItemKind = enum {
@@ -420,13 +310,163 @@ pub const SymbolKind = enum {
 };
 
 pub const ClientCapabilities = struct {
-    workspace: ?WorkspaceClientCapabilities,
-    textDocument: ?TextDocumentClientCapabilities,
+    workspace: ?struct {
+        applyEdit: ?bool,
+        workspaceEdit: ?struct {
+            documentChanges: ?bool,
+            resourceOperations: ?[]String,
+            failureHandling: ?String,
+
+            pub const resource_operation_kind_create = "create";
+            pub const resource_operation_kind_rename = "rename";
+            pub const resource_operation_kind_delete = "delete";
+            pub const failure_handling_kind_abort = "abort";
+            pub const failure_handling_kind_transactional = "transactional";
+            pub const failure_handling_kind_undo = "undo";
+            pub const failure_handling_kind_textOnlyTransactional = "textOnlyTransactional";
+        },
+        didChangeConfiguration: ?struct {
+            dynamicRegistration: ?bool,
+        },
+        didChangeWatchedFiles: ?struct {
+            dynamicRegistration: ?bool,
+        },
+        symbol: ?struct {
+            dynamicRegistration: ?bool,
+            symbolKind: ?struct {
+                valueSet: ?[]SymbolKind,
+            },
+        },
+        executeCommand: ?struct {
+            dynamicRegistration: ?bool,
+        },
+        workspaceFolders: ?bool,
+        configuration: ?bool,
+    },
+    textDocument: ?struct {
+        selectionRange: ?struct {
+            dynamicRegistration: ?bool,
+        },
+        synchronization: ?struct {
+            dynamicRegistration: ?bool,
+            willSave: ?bool,
+            willSaveWaitUntil: ?bool,
+            didSave: ?bool,
+        },
+        completion: ?struct {
+            dynamicRegistration: ?bool,
+            completionItem: ?struct {
+                snippetSupport: ?bool,
+                commitCharactersSupport: ?bool,
+                documentationFormat: ?[]String,
+                deprecatedSupport: ?bool,
+                preselectSupport: ?bool,
+                tagSupport: ?struct {
+                    valueSet: ?[]CompletionItemTag,
+                },
+            },
+            completionItemKind: ?struct {
+                valueSet: ?[]CompletionItemKind,
+            },
+            contextSupport: ?bool,
+        },
+        hover: ?struct {
+            dynamicRegistration: ?bool,
+            contentFormat: ?[]String,
+        },
+        signatureHelp: ?struct {
+            dynamicRegistration: ?bool,
+            signatureInformation: ?struct {
+                documentationFormat: ?[]String,
+                parameterInformation: ?struct {
+                    labelOffsetSupport: ?bool,
+                },
+            },
+            contextSupport: ?bool,
+        },
+        references: ?struct {
+            dynamicRegistration: ?bool,
+        },
+        documentHighlight: ?struct {
+            dynamicRegistration: ?bool,
+        },
+        documentSymbol: ?struct {
+            dynamicRegistration: ?bool,
+            symbolKind: ?struct {
+                valueSet: ?[]SymbolKind,
+            },
+            hierarchicalDocumentSymbolSupport: ?bool,
+        },
+        formatting: ?struct {
+            dynamicRegistration: ?bool,
+        },
+        rangeFormatting: ?struct {
+            dynamicRegistration: ?bool,
+        },
+        onTypeFormatting: ?struct {
+            dynamicRegistration: ?bool,
+        },
+        declaration: ?struct {
+            dynamicRegistration: ?bool,
+            linkSupport: ?bool,
+        },
+        definition: ?struct {
+            dynamicRegistration: ?bool,
+            linkSupport: ?bool,
+        },
+        typeDefinition: ?struct {
+            dynamicRegistration: ?bool,
+            linkSupport: ?bool,
+        },
+        implementation: ?struct {
+            dynamicRegistration: ?bool,
+            linkSupport: ?bool,
+        },
+        codeAction: ?struct {
+            dynamicRegistration: ?bool,
+            codeActionLiteralSupport: ?struct {
+                codeActionKind: struct {
+                    valueSet: []String,
+                },
+            },
+            isPreferredSupport: ?bool,
+        },
+        codeLens: ?struct {
+            dynamicRegistration: ?bool,
+        },
+        documentLink: ?struct {
+            dynamicRegistration: ?bool,
+            tooltipSupport: ?bool,
+        },
+        colorProvider: ?struct {
+            dynamicRegistration: ?bool,
+        },
+        rename: ?struct {
+            dynamicRegistration: ?bool,
+            prepareSupport: ?bool,
+        },
+        publishDiagnostics: ?struct {
+            relatedInformation: ?bool,
+            tagSupport: ?struct {
+                valueSet: []DiagnosticTag,
+            },
+            versionSupport: ?bool,
+        },
+        foldingRange: ?struct {
+            dynamicRegistration: ?bool,
+            rangeLimit: ?bool,
+            lineFoldingOnly: ?bool,
+        },
+    },
     experimental: ?JsonAny,
 };
 
 pub const InitializeResult = struct {
     capabilities: ServerCapabilities,
+    serverInfo: ?struct {
+        name: String,
+        version: ?String,
+    },
 };
 
 pub const TextDocumentSyncKind = enum {
@@ -442,10 +482,140 @@ pub const CompletionOptions = struct {
 
 pub const SignatureHelpOptions = struct {
     triggerCharacters: ?[]String,
+    retriggerCharacters: ?[]String,
 };
 
 pub const CodeActionOptions = struct {
     codeActionKinds: ?[]String,
+};
+
+pub const CodeLensOptions = struct {
+    resolveProvider: ?bool,
+};
+
+pub const DocumentOnTypeFormattingOptions = struct {
+    firstTriggerCharacter: String,
+    moreTriggerCharacter: ?[]String,
+};
+
+pub const RenameOptions = struct {
+    prepareProvider: ?bool,
+};
+
+pub const DocumentLinkOptions = struct {
+    resolveProvider: ?bool,
+};
+
+pub const ExecuteCommandOptions = struct {
+    commands: []String,
+};
+
+pub const SaveOptions = struct {
+    includeText: ?bool,
+};
+
+pub const ColorProviderOptions = struct {};
+
+pub const FoldingRangeProviderOptions = struct {};
+
+pub const TextDocumentSyncOptions = struct {
+    openClose: ?bool,
+    change: ?isize,
+    willSave: ?bool,
+    willSaveWaitUntil: ?bool,
+    save: ?SaveOptions,
+};
+
+pub const StaticRegistrationOptions = struct {
+    id: ?string,
+};
+
+pub const ServerCapabilities = struct {
+    textDocumentSync: ?union(enum) {
+        kind: TextDocumentSyncKind,
+        options: TextDocumentSyncOptions,
+    },
+    hoverProvider: ?bool,
+    completionProvider: ?CompletionOptions,
+    signatureHelpProvider: ?SignatureHelpOptions,
+    definitionProvider: ?bool,
+    typeDefinitionProvider: ?bool,
+    implementationProvider: ?bool,
+    referencesProvider: ?bool,
+    documentHighlightProvider: ?bool,
+    documentSymbolProvider: ?bool,
+    workspaceSymbolProvider: ?bool,
+    codeActionProvider: ?bool,
+    codeLensProvider: ?CodeLensOptions,
+    documentFormattingProvider: ?bool,
+    documentRangeFormattingProvider: ?bool,
+    documentOnTypeFormattingProvider: ?DocumentOnTypeFormattingOptions,
+    renameProvider: ?bool,
+    documentLinkProvider: ?DocumentLinkOptions,
+    colorProvider: ?bool,
+    foldingRangeProvider: ?bool,
+    declarationProvider: ?bool,
+    executeCommandProvider: ?ExecuteCommandOptions,
+    workspace: ?struct {
+        workspaceFolders: ?struct {
+            supported: ?bool,
+            changeNotifications: ?bool,
+        },
+    },
+    selectionRangeProvider: ?bool,
+    experimental: ?JsonAny,
+};
+
+pub const InitializedParams = struct {};
+
+pub const ShowMessageParams = struct {
+    type__: MessageType,
+    message: String,
+};
+
+pub const MessageType = enum {
+    Error = 1,
+    Warning = 2,
+    Info = 3,
+    Log = 4,
+};
+
+pub const ShowMessageRequestParams = struct {
+    type__: MessageType,
+    message: String,
+    actions: ?[]MessageActionItem,
+};
+
+pub const MessageActionItem = struct {
+    title: String,
+};
+
+pub const LogMessageParams = struct {
+    type__: MessageType,
+    message: String,
+};
+
+pub const Registration = struct {
+    id: String,
+    method: String,
+    registerOptions: ?JsonAny,
+};
+
+pub const RegistrationParams = struct {
+    registrations: []Registration,
+};
+
+pub const TextDocumentRegistrationOptions = struct {
+    documentSelector: ?DocumentSelector,
+};
+
+pub const Unregistration = struct {
+    id: String,
+    method: String,
+};
+
+pub const UnregistrationParams = struct {
+    unregisterations: []Unregistration,
 };
 
 pub const WorkspaceFolder = struct {
@@ -453,13 +623,500 @@ pub const WorkspaceFolder = struct {
     name: String,
 };
 
-pub const ServerCapabilities = struct {};
-
-pub const CancelParams = struct {
-    id: IntOrString,
+pub const DidChangeWorkspaceFoldersParams = struct {
+    event: WorkspaceFoldersChangeEvent,
 };
 
-pub const TextDocumentPositionParams = struct {
+pub const WorkspaceFoldersChangeEvent = struct {
+    added: []WorkspaceFolder,
+    removded: []WorkspaceFolder,
+};
+
+pub const DidChangeConfigurationParams = struct {
+    settings: JsonAny,
+};
+
+pub const ConfigurationParams = struct {
+    items: []ConfigurationItem,
+};
+
+pub const ConfigurationItem = struct {
+    scopeUri: ?DocumentUri,
+    section: ?String,
+};
+
+pub const DidChangeWatchedFilesParams = struct {
+    changes: []FileEvent,
+};
+
+pub const FileEvent = struct {
+    uri: DocumentUri,
+    type__: enum {
+        Created = 1,
+        Changed = 2,
+        Deleted = 3,
+    },
+};
+
+pub const DidChangeWatchedFilesRegistrationOptions = struct {
+    watchers: []FileSystemWatcher,
+};
+
+pub const FileSystemWatcher = struct {
+    globPattern: String,
+    kind: ?enum {
+        Created = 1,
+        Changed = 2,
+        Deleted = 3,
+    } = 7,
+};
+
+pub const WorkspaceSymbolParams = struct {
+    WorkDoneProgressParams: WorkDoneProgressParams,
+    PartialResultParams: PartialResultParams,
+    query: String,
+};
+
+pub const ExecuteCommandParams = struct {
+    WorkDoneProgressParams: WorkDoneProgressParams,
+    command: String,
+    arguments: ?[]JsonAny,
+};
+
+pub const ExecuteCommandRegistrationOptions = struct {
+    commands: []String,
+};
+
+pub const ApplyWorkspaceEditParams = struct {
+    label: ?String,
+    edit: WorkspaceEdit,
+};
+
+pub const ApplyWorkspaceEditResponse = struct {
+    applied: bool,
+    failureReason: ?String,
+};
+
+pub const DidOpenTextDocumentParams = struct {
+    textDocument: TextDocumentItem,
+};
+
+pub const DidChangeTextDocumentParams = struct {
+    textDocument: VersionedTextDocumentIdentifier,
+    contentChanges: []TextDocumentContentChangeEvent,
+};
+
+pub const TextDocumentContentChangeEvent = struct {
+    range: ?Range,
+    rangeLength: ?isize,
+    text: String,
+};
+
+pub const TextDocumentChangeRegistrationOptions = struct {
+    TextDocumentRegistrationOptions: TextDocumentRegistrationOptions,
+    syncKind: TextDocumentSyncKind,
+};
+
+pub const WillSaveTextDocumentParams = struct {
     textDocument: TextDocumentIdentifier,
+    reason: enum {
+        Manual = 1,
+        AfterDelay = 2,
+        FocusOut = 3,
+    },
+};
+
+pub const DidSaveTextDocumentParams = struct {
+    textDocument: TextDocumentIdentifier,
+    text: ?String,
+};
+
+pub const TextDocumentSaveRegistrationOptions = struct {
+    TextDocumentRegistrationOptions: TextDocumentRegistrationOptions,
+    includeText: ?bool,
+};
+
+pub const DidCloseTextDocumentParams = struct {
+    textDocument: TextDocumentIdentifier,
+};
+
+pub const PublishDiagnosticsParams = struct {
+    uri: DocumentUri,
+    version: ?isize,
+    diagnostics: []Diagnostic,
+};
+
+pub const CompletionParams = struct {
+    TextDocumentPositionParams: TextDocumentPositionParams,
+    WorkDoneProgressParams: WorkDoneProgressParams,
+    PartialResultParams: PartialResultParams,
+    context: ?CompletionContext,
+};
+
+pub const CompletionTriggerKind = enum {
+    Invoked = 1,
+    TriggerCharacter = 2,
+    TriggerForIncompleteCompletions = 3,
+};
+
+pub const CompletionContext = struct {
+    triggerKind: CompletionTriggerKind,
+    triggerCharacter: ?String,
+};
+
+pub const CompletionList = struct {
+    isIncomplete: bool,
+    items: []CompletionItem,
+};
+
+pub const InsertTextFormat = enum {
+    PlainText = 1,
+    Snippet = 2,
+};
+
+pub const CompletionItem = struct {
+    label: String,
+    kind: ?CompletionItemKind,
+    tags: ?[]CompletionItemTag,
+    detail: ?String,
+    documentation: ?MarkupContent,
+    deprecated: ?bool,
+    preselect: ?bool,
+    sortText: ?String,
+    filterText: ?String,
+    insertText: ?String,
+    insertTextFormat: ?InsertTextFormat,
+    textEdit: ?TextEdit,
+    additionalTextEdits: ?[]TextEdit,
+    commitCharacters: ?[]String,
+    command: ?String,
+    data: ?JsonAny,
+};
+
+pub const CompletionRegistrationOptions = struct {
+    TextDocumentRegistrationOptions: TextDocumentRegistrationOptions,
+    triggerCharacters: ?[]String,
+    allCommitCharacters: ?[]String,
+    resolveProvider: ?bool,
+};
+
+pub const Hover = struct {
+    contents: MarkupContent,
+    range: ?Range,
+};
+
+pub const SignatureHelp = struct {
+    signatures: []SignatureInformation,
+    activeSignature: ?isize,
+    activeParameter: ?isize,
+};
+
+pub const SignatureInformation = struct {
+    label: String,
+    documentation: ?MarkupContent,
+    parameters: ?[]ParameterInformation,
+};
+
+pub const ParameterInformation = struct {
+    label: String,
+    documentation: ?MarkupContent,
+};
+
+pub const SignatureHelpRegistrationOptions = struct {
+    TextDocumentRegistrationOptions: TextDocumentRegistrationOptions,
+    triggerCharacters: ?[]String,
+};
+
+pub const ReferenceParams = struct {
+    TextDocumentPositionParams: TextDocumentPositionParams,
+    WorkDoneProgressParams: WorkDoneProgressParams,
+    PartialResultParams: PartialResultParams,
+    context: ReferenceContext,
+};
+
+pub const ReferenceContext = struct {
+    includeDeclaration: bool,
+};
+
+pub const DocumentHighlight = struct {
+    range: Range,
+    kind: ?enum {
+        Text = 1,
+        Read = 2,
+        Write = 3,
+    },
+};
+
+pub const DocumentSymbolParams = struct {
+    textDocument: TextDocumentIdentifier,
+    WorkDoneProgressParams: WorkDoneProgressParams,
+    PartialResultParams: PartialResultParams,
+};
+
+pub const DocumentSymbol = struct {
+    name: String,
+    detail: ?String,
+    kind: SymbolKind,
+    deprecated: ?bool,
+    range: Range,
+    selectionRange: Range,
+    children: ?[]DocumentSymbol,
+};
+
+pub const SymbolInformation = struct {
+    name: String,
+    kind: SymbolKind,
+    deprecated: ?bool,
+    location: Location,
+    containerName: ?String,
+};
+
+pub const CodeActionParams = struct {
+    WorkDoneProgressParams: WorkDoneProgressParams,
+    PartialResultParams: PartialResultParams,
+    textDocument: TextDocumentIdentifier,
+    range: Range,
+    context: CodeActionContext,
+};
+
+pub const CodeActionContext = struct {
+    diagnostics: []Diagnostic,
+    only: ?[]String,
+};
+
+pub const CodeAction = struct {
+    title: String,
+    kind: ?String,
+    diagnostics: ?[]Diagnostic,
+    isPreferred: ?bool,
+    edit: ?WorkspaceEdit,
+    command: ?Command,
+};
+
+pub const CodeActionRegistrationOptions = struct {
+    TextDocumentRegistrationOptions: TextDocumentRegistrationOptions,
+    CodeActionOptions: CodeActionOptions,
+};
+
+pub const CodeLensParams = struct {
+    textDocument: TextDocumentIdentifier,
+    WorkDoneProgressParams: WorkDoneProgressParams,
+    PartialResultParams: PartialResultParams,
+};
+
+pub const CodeLens = struct {
+    range: Range,
+    command: ?Command,
+    data: ?JsonAny,
+};
+
+pub const CodeLensRegistrationOptions = struct {
+    TextDocumentRegistrationOptions: TextDocumentRegistrationOptions,
+    resolveProvider: ?bool,
+};
+
+pub const DocumentLinkParams = struct {
+    textDocument: TextDocumentIdentifier,
+    WorkDoneProgressParams: WorkDoneProgressParams,
+    PartialResultParams: PartialResultParams,
+};
+
+pub const DocumentLink = struct {
+    range: Range,
+    target: ?DocumentUri,
+    toolTip: ?String,
+    data: ?JsonAny,
+};
+
+pub const DocumentLinkRegistrationOptions = struct {
+    TextDocumentRegistrationOptions: TextDocumentRegistrationOptions,
+    resolveProvider: ?bool,
+};
+
+pub const DocumentColorParams = struct {
+    WorkDoneProgressParams: WorkDoneProgressParams,
+    PartialResultParams: PartialResultParams,
+    textDocument: TextDocumentIdentifier,
+};
+
+pub const ColorInformation = struct {
+    range: Range,
+    color: Color,
+};
+
+pub const Color = struct {
+    red: f64,
+    green: f64,
+    blue: f64,
+    alpha: f64,
+};
+
+pub const ColorPresentationParams = struct {
+    WorkDoneProgressParams: WorkDoneProgressParams,
+    PartialResultParams: PartialResultParams,
+    textDocument: TextDocumentIdentifier,
+    color: Color,
+    range: Range,
+};
+
+pub const ColorPresentation = struct {
+    label: String,
+    textEdit: ?TextEdit,
+    additionalTextEdits: ?[]TextEdit,
+};
+
+pub const DocumentFormattingParams = struct {
+    WorkDoneProgressParams: WorkDoneProgressParams,
+    textDocument: TextDocumentIdentifier,
+    options: FormattingOptions,
+};
+
+pub const FormattingOptions = struct {
+    tabSize: isize,
+    insertSpaces: bool,
+    trimTrailingWhitespace: ?bool,
+    insertFinalNewline: ?bool,
+    trimFinalNewlines: ?bool,
+    __: StringHashMap(union {
+        boolean: bool,
+        number: isize,
+        string: String,
+    }),
+};
+
+pub const DocumentRangeFormattingParams = struct {
+    WorkDoneProgressParams: WorkDoneProgressParams,
+    textDocument: TextDocumentIdentifier,
+    range: Range,
+    options: FormattingOptions,
+};
+
+pub const DocumentOnTypeFormattingParams = struct {
+    textDocument = TextDocumentIdentifier,
     position: Position,
+    ch: String,
+    options: FormattingOptions,
+};
+
+pub const DocumentOnTypeFormattingRegistrationOptions = struct {
+    TextDocumentRegistrationOptions: TextDocumentRegistrationOptions,
+    firstTriggerCharacter: String,
+    moreTriggerCharacter: ?[]String,
+};
+
+pub const RenameParams = struct {
+    TextDocumentPositionParams: TextDocumentPositionParams,
+    WorkDoneProgressParams: WorkDoneProgressParams,
+    newName: String,
+};
+
+pub const RenameRegistrationOptions = struct {
+    TextDocumentRegistrationOptions: TextDocumentRegistrationOptions,
+    prepareProvider: ?bool,
+};
+
+pub const FoldingRangeParams = struct {
+    WorkDoneProgressParams: WorkDoneProgressParams,
+    PartialResultParams: PartialResultParams,
+    textDocument: TextDocumentIdentifier,
+};
+
+pub const FoldingRange = struct {
+    startLine: isize,
+    startCharacter: ?isize,
+    endLine: isize,
+    endCharacter: ?isize,
+    kind: ?String,
+
+    pub const kind_comment = "comment";
+    pub const kind_imports = "imports";
+    pub const kind_region = "region";
+};
+
+pub const SignatureHelpParams = struct {
+    TextDocumentPositionParams: TextDocumentPositionParams,
+    WorkDoneProgressParams: WorkDoneProgressParams,
+    context: ?SignatureHelpContext,
+};
+
+pub const WorkDoneProgressParams = struct {
+    workDoneToken: ?ProgressToken,
+};
+
+pub const PartialResultParams = struct {
+    partialResultToken: ?ProgressToken,
+};
+
+pub const ProgressToken = IntOrString;
+
+pub const ProgressParams = struct {
+    token: ProgressToken,
+    value: JsonAny,
+};
+
+pub const WorkDoneProgress = struct {
+    kind: String,
+    title: String,
+    cancellable: ?bool,
+    message: ?String,
+    percentage: ?isize,
+
+    pub const kind_begin = "begin";
+    pub const kind_report = "report";
+    pub const kind_end = "end";
+};
+
+pub const SignatureHelpContext = struct {
+    triggerKind: SignatureHelpTriggerKind,
+    triggerCharacter: ?String,
+    isRetrigger: bool,
+    activeSignatureHelp: ?SignatureHelp,
+};
+
+pub const SignatureHelpTriggerKind = enum {
+    Invoked = 1,
+    TriggerCharacter = 2,
+    ContentChange = 3,
+};
+
+pub const HoverParams = struct {
+    TextDocumentPositionParams: TextDocumentPositionParams,
+    WorkDoneProgressParams: WorkDoneProgressParams,
+};
+
+pub const DeclarationParams = struct {
+    TextDocumentPositionParams: TextDocumentPositionParams,
+    WorkDoneProgressParams: WorkDoneProgressParams,
+    PartialResultParams: PartialResultParams,
+};
+
+pub const DefinitionParams = struct {
+    TextDocumentPositionParams: TextDocumentPositionParams,
+    WorkDoneProgressParams: WorkDoneProgressParams,
+    PartialResultParams: PartialResultParams,
+};
+
+pub const TypeDefinitionParams = struct {
+    TextDocumentPositionParams: TextDocumentPositionParams,
+    WorkDoneProgressParams: WorkDoneProgressParams,
+    PartialResultParams: PartialResultParams,
+};
+
+pub const ImplementationParams = struct {
+    TextDocumentPositionParams: TextDocumentPositionParams,
+    WorkDoneProgressParams: WorkDoneProgressParams,
+    PartialResultParams: PartialResultParams,
+};
+
+pub const DocumentHighlightParams = struct {
+    TextDocumentPositionParams: TextDocumentPositionParams,
+    WorkDoneProgressParams: WorkDoneProgressParams,
+    PartialResultParams: PartialResultParams,
+};
+
+pub const SelectionRangeParams = struct {
+    WorkDoneProgressParams: WorkDoneProgressParams,
+    PartialResultParams: PartialResultParams,
+    textDocument: TextDocumentIdentifier,
+    positions: []Position,
 };
