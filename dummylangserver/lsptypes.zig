@@ -67,6 +67,20 @@ pub const RequestMessage = struct {
             textDocument_references: *ReferenceParams,
             textDocument_documentHighlight: *DocumentHighlightParams,
             textDocument_documentSymbol: *DocumentSymbolParams,
+            textDocument_codeAction: *CodeActionParams,
+            textDocument_codeLens: *CodeLensParams,
+            codeLens_resolve: *CodeLens,
+            textDocument_documentLink: *DocumentLinkParams,
+            documentLink_resolve: *DocumentLink,
+            textDocument_documentColor: *DocumentColorParams,
+            textDocument_colorPresentation: *ColorPresentationParams,
+            textDocument_formatting: *DocumentFormattingParams,
+            textDocument_rangeFormatting: *DocumentRangeFormattingParams,
+            textDocument_onTypeFormatting: *DocumentOnTypeFormattingParams,
+            textDocument_rename: *RenameParams,
+            textDocument_prepareRename: *TextDocumentPositionParams,
+            textDocument_foldingRange: *FoldingRangeParams,
+            textDocument_selectionRange: *SelectionRangeParams,
         },
         out: union(enum) {
             window_showMessageRequest: *ShowMessageRequestParams,
@@ -126,6 +140,23 @@ pub const ResponseMessage = struct {
                 symbol_infos: []SymbolInformation,
                 doc_symbols: []DocumentSymbol,
             },
+            textDocument_codeAction: ?[]union(enum) {
+                command: Command,
+                code_action: CodeAction,
+            },
+            textDocument_codeLens: ?[]CodeLens,
+            codeLens_resolve: *CodeLens,
+            textDocument_documentLink: ?[]DocumentLink,
+            documentLink_resolve: *DocumentLink,
+            textDocument_documentColor: []ColorInformation,
+            textDocument_colorPresentation: []ColorPresentation,
+            textDocument_formatting: ?[]TextEdit,
+            textDocument_rangeFormatting: ?[]TextEdit,
+            textDocument_onTypeFormatting: ?[]TextEdit,
+            textDocument_rename: ?[]WorkspaceEdit,
+            textDocument_prepareRename: ?*Range,
+            textDocument_foldingRange: ?[]FoldingRange,
+            textDocument_selectionRange: ?[]SelectionRange,
         },
     },
     error__: ?ResponseError,
@@ -1192,6 +1223,11 @@ pub const DocumentHighlightParams = struct {
     TextDocumentPositionParams: TextDocumentPositionParams,
     WorkDoneProgressParams: WorkDoneProgressParams,
     PartialResultParams: PartialResultParams,
+};
+
+pub const SelectionRange = struct {
+    range: Range,
+    parent: ?*SelectionRange,
 };
 
 pub const SelectionRangeParams = struct {

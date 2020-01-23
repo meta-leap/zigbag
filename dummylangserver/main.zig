@@ -1,8 +1,6 @@
 const std = @import("std");
 
 pub fn main() !u8 {
-    _ = @import("./uri.zig").Uri.init("wut://foo/bar/baz?hello=world#frag");
-
     var mem_global = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer mem_global.deinit();
 
