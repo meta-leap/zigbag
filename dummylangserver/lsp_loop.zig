@@ -7,9 +7,10 @@ pub const Engine = struct {
     pub fn serve(self: *Engine) !void {
         var mem_buf = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer mem_buf.deinit();
-        const buf = &try std.ArrayList(u8).initCapacity(&mem_buf.allocator, 2 * 1024 * 1024);
 
-        var got_content_length: ?usize = null;
+        const buf = &try std.ArrayList(u8).initCapacity(&mem_buf.allocator, 2 * 1024 * 1024);
+        var got_content_len: ?usize = null;
+
         while (true) {
             buf.len += read_more: {
                 const num_bytes = try self.input.read(buf.items[buf.len..]);
@@ -17,22 +18,22 @@ pub const Engine = struct {
             };
 
             const so_far = buf.toSliceConst();
-            if (got_content_length == null)
+            if (got_content_len == null)
                 if (std.mem.indexOf(u8, so_far, "Content-Length:")) |idx|
                     if (idx == 0 or buf.items[idx - 1] == '\n') {
                         const idx_start = idx + "Content-Length:".len;
                         if (std.mem.indexOfScalarPos(u8, so_far, idx_start, '\n')) |idx_newline| {
-                            const str_content_length = std.mem.trim(u8, so_far[idx_start..idx_newline], " \t\r");
-                            got_content_length = try std.fmt.parseUnsigned(usize, str_content_length, 10);
+                            const str_content_len = std.mem.trim(u8, so_far[idx_start..idx_newline], " \t\r");
+                            got_content_len = try std.fmt.parseUnsigned(usize, str_content_len, 10);
                         }
                     };
-            if (got_content_length) |content_len| {
+            if (got_content_len) |content_len| {
                 if (std.mem.indexOf(u8, so_far, "\r\n\r\n")) |idx| {
                     const got = buf.items[idx + 4 .. buf.len];
                     std.mem.copy(u8, buf.items[0..got.len], got);
-                    try buf.ensureCapacity(content_len);
                     buf.len = got.len;
                     if (got.len < content_len) {
+                        try buf.ensureCapacity(content_len);
                         try self.input.readNoEof(buf.items[got.len..(content_len - got.len)]);
                         buf.len = content_len;
                     }
@@ -43,7 +44,7 @@ pub const Engine = struct {
                     const keep = buf.items[content_len..buf.len];
                     std.mem.copy(u8, buf.items[0..keep.len], keep);
                     buf.len = keep.len;
-                    got_content_length = null;
+                    got_content_len = null;
                 }
             }
         }
