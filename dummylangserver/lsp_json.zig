@@ -72,10 +72,14 @@ pub fn loadOther(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
                 break :load_all .{ .array = &[_]types.JsonAny{} };
             },
         }
-    else if (type_id == .Optional)
-        return (try loadOther(type_info.Optional.child, mem, from)) orelse null
-    else if (type_id == .Pointer) {
-        if (type_info.Pointer.size == .Slice) switch (from.*) {
+    else if (type_id == .Optional) switch (from.*) {
+        .Null => return null,
+        else => return (try loadOther(type_info.Optional.child, mem, from)) orelse null,
+    } else if (type_id == .Pointer) {
+        if (type_info.Pointer.size != .Slice) {
+            const copy = try loadOther(type_info.Pointer.child, mem, from);
+            return try @import("./xstd.mem.zig").enHeap(&mem.allocator, copy orelse return null);
+        } else switch (from.*) {
             .Array => |jarr| {
                 var ret = try mem.allocator.alloc(type_info.Pointer.child, jarr.len);
                 for (jarr.items[0..jarr.len]) |*jval, i|
@@ -83,32 +87,31 @@ pub fn loadOther(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
                 return ret;
             },
             else => return null,
-        } else
-            return try @import("./xstd.mem.zig").enHeap(
-            &mem.allocator,
-            (try loadOther(type_info.Pointer.child, mem, from)) orelse return null,
-        );
+        }
     } else if (type_id == .Struct) {
         comptime if (std.mem.indexOf(u8, @typeName(T), "HashMap")) |_|
             @compileError(@typeName(T));
         switch (from.*) {
             .Object => |*jmap| {
-                var ret: T = undefined;
+                var ret = @import("./xstd.mem.zig").zeroed(T);
                 comptime var i = @memberCount(T);
                 inline while (i > 0) {
                     i -= 1;
                     const field_name = @memberName(T, i);
                     const field_type = @memberType(T, i);
-                    if (comptime std.mem.eql(u8, "__", field_name)) {} else if (comptime std.mem.indexOf(u8, @typeName(field_type), "HashMap")) |_|
+                    if (comptime std.mem.eql(u8, field_name, @typeName(field_type)))
+                        @field(ret, field_name) = (try loadOther(field_type, mem, from)) orelse return null
+                    else if (comptime std.mem.indexOf(u8, @typeName(field_type), "HashMap")) |_|
                         @compileError(field_name ++ "\t" ++ @typeName(field_type))
-                    else if (jmap.getValue(std.mem.trimRight(u8, field_name, "_"))) |*jval| {
+                    else if (jmap.getValue(std.mem.trimRight(u8, field_name, "_"))) |*jval|
                         @field(ret, field_name) = (try loadOther(field_type, mem, jval)) orelse return null;
-                    }
                 }
                 return ret;
             },
             else => return null,
         }
+    } else if (type_id == .Union) {
+        std.debug.warn("TID\t{}\n", .{type_id});
     } else {
         std.debug.warn("TID\t{}\n", .{type_id});
     }

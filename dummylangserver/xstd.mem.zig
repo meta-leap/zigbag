@@ -13,3 +13,32 @@ pub inline fn enHeap(mem: *std.mem.Allocator, it: var) !*@TypeOf(it) {
     ret.* = it;
     return ret;
 }
+
+pub inline fn zeroed(comptime T: type) T {
+    var ret: T = undefined;
+    switch (comptime @typeId(T)) {
+        .Bool => ret = false,
+        .Int => ret = 0,
+        .Float => ret = 0.0,
+        .Optional => ret = null,
+        .Enum => ret = @intToEnum(T, 0),
+        .Struct => {
+            comptime var i = comptime @memberCount(T);
+            inline while (i > 0) {
+                comptime i -= 1;
+                @field(ret, comptime @memberName(T, i)) = zeroed(comptime @memberType(T, i));
+            }
+        },
+        .Pointer => {
+            const type_info = comptime @typeInfo(T);
+            if (type_info.Pointer.size != .Slice)
+                unreachable;
+            ret = &[_]type_info.Pointer.child{};
+        },
+        else => {
+            std.debug.warn("TODO!ZERO\t{}\n", .{@typeId(T)});
+            unreachable;
+        },
+    }
+    return ret;
+}

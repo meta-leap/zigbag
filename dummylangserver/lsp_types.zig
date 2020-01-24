@@ -109,32 +109,17 @@ pub const ResponseOut = union(enum) {
     completionItem_resolve: *CompletionItem,
     textDocument_hover: ?*Hover,
     textDocument_signatureHelp: ?*SignatureHelp,
-    textDocument_declaration: ?[]union(enum) {
-        locations: Location,
-        links: LocationLink,
-    },
-    textDocument_definition: ?[]union(enum) {
-        locations: Location,
-        links: LocationLink,
-    },
-    textDocument_typeDefinition: ?[]union(enum) {
-        locations: Location,
-        links: LocationLink,
-    },
-    textDocument_implementation: ?[]union(enum) {
-        locations: Location,
-        links: LocationLink,
-    },
+    textDocument_declaration: ?[]LocOrLink,
+    textDocument_definition: ?[]LocOrLink,
+    textDocument_typeDefinition: ?[]LocOrLink,
+    textDocument_implementation: ?[]LocOrLink,
     textDocument_references: ?[]Location,
     textDocument_documentHighlight: ?[]DocumentHighlight,
-    textDocument_documentSymbol: ?[]union(enum) {
-        symbol_infos: SymbolInformation,
-        doc_symbols: DocumentSymbol,
+    textDocument_documentSymbol: ?[]struct {
+        SymbolInformation: SymbolInformation,
+        DocumentSymbol: DocumentSymbol,
     },
-    textDocument_codeAction: ?[]union(enum) {
-        command: Command,
-        code_action: CodeAction,
-    },
+    textDocument_codeAction: ?[]CodeAction,
     textDocument_codeLens: ?[]CodeLens,
     codeLens_resolve: *CodeLens,
     textDocument_documentLink: ?[]DocumentLink,
@@ -148,40 +133,6 @@ pub const ResponseOut = union(enum) {
     textDocument_prepareRename: ?*Range,
     textDocument_foldingRange: ?[]FoldingRange,
     textDocument_selectionRange: ?[]SelectionRange,
-};
-
-pub const Message = struct {
-    jsonrpc: String = "2.0",
-};
-
-pub const NotificationMessage = struct {
-    Message: Message,
-
-    method__and__params: ?union(enum) {
-        in: NotifyIn,
-        out: NotifyOut,
-    },
-};
-
-pub const RequestMessage = struct {
-    Message: Message,
-
-    id: IntOrString,
-    method__and__params: ?union(enum) {
-        in: RequestIn,
-        out: RequestOut,
-    },
-};
-
-pub const ResponseMessage = struct {
-    Message: Message,
-
-    id: ?IntOrString,
-    result: ?union(enum) {
-        in: ResponseIn,
-        out: ResponseOut,
-    },
-    error__: ?ResponseError,
 };
 
 pub const ResponseError = struct {
@@ -218,22 +169,27 @@ pub const Range = struct {
     end: Position,
 };
 
+pub const LocOrLink = struct {
+    Location: Location,
+    LocationLink: LocationLink,
+};
+
 pub const Location = struct {
-    uri: DocumentUri,
-    range: Range,
+    uri: ?DocumentUri,
+    range: ?Range,
 };
 
 pub const LocationLink = struct {
     originSelectionRange: ?Range,
-    targetUri: DocumentUri,
-    targetRange: Range,
-    targetSelectionRange: Range,
+    targetUri: ?DocumentUri,
+    targetRange: ?Range,
+    targetSelectionRange: ?Range,
 };
 
 pub const Diagnostic = struct {
     range: Range,
     severity: ?enum {
-        Unknown = 0,
+        __ = 0,
         Error = 1,
         Warning = 2,
         Information = 3,
@@ -247,7 +203,7 @@ pub const Diagnostic = struct {
 };
 
 pub const DiagnosticTag = enum {
-    None = 0,
+    __ = 0,
     Unnecessary = 1,
     Deprecated = 2,
 };
@@ -269,8 +225,8 @@ pub const TextEdit = struct {
 };
 
 pub const TextDocumentEdit = struct {
-    textDocument: VersionedTextDocumentIdentifier,
-    edits: []TextEdit,
+    textDocument: ?VersionedTextDocumentIdentifier,
+    edits: ?[]TextEdit,
 };
 
 pub const VersionedTextDocumentIdentifier = struct {
@@ -287,47 +243,24 @@ pub const TextDocumentIdentifier = struct {
     uri: DocumentUri,
 };
 
-pub const CreateFileOptions = struct {
-    overwrite: ?bool,
-    ignoreIfExists: ?bool,
-};
-
-pub const CreateFile = struct {
-    kind: String = ClientCapabilities.workspace.workspaceEdit.resource_operation_kind_create,
-    uri: DocumentUri,
-    options: ?CreateFileOptions,
-};
-
-pub const RenameFileOptions = struct {
-    overwrite: ?bool,
-    ignoreIfExists: ?bool,
-};
-
-pub const RenameFile = struct {
-    kind: String = ClientCapabilities.workspace.workspaceEdit.resource_operation_kind_rename,
-    oldUri: DocumentUri,
-    newUri: DocumentUri,
-    options: ?RenameFileOptions,
-};
-
-pub const DeleteFileOptions = struct {
-    recursive: ?bool,
-    ignoreIfNotExists: ?bool,
-};
-
-pub const DeleteFile = struct {
-    kind: String = ClientCapabilities.workspace.workspaceEdit.resource_operation_kind_delete,
-    uri: DocumentUri,
-    options: ?DeleteFileOptions,
+pub const FileCreateRenameDelete = struct {
+    kind: ?String,
+    uri: ?DocumentUri,
+    oldUri: ?DocumentUri,
+    newUri: ?DocumentUri,
+    options: ?struct {
+        overwrite: ?bool,
+        ignoreIfExists: ?bool,
+        recursive: ?bool,
+        ignoreIfNotExists: ?bool,
+    },
 };
 
 pub const WorkspaceEdit = struct {
     changes: ?std.AutoHashMap(DocumentUri, []TextEdit),
-    documentChanges: ?[]union(enum) {
-        kind__of__rename: RenameFile,
-        kind__of__delete: DeleteFile,
-        kind__of__create: CreateFile,
-        kind__of__else: TextDocumentEdit,
+    documentChanges: ?[]struct {
+        FileCreateRenameDelete: FileCreateRenameDelete,
+        TextDocumentEdit: TextDocumentEdit,
     },
 };
 
@@ -384,7 +317,7 @@ pub const code_action_kind = struct {
 };
 
 pub const CompletionItemTag = enum {
-    None = 0,
+    __ = 0,
     Deprecated = 1,
 };
 
@@ -848,7 +781,7 @@ pub const TextDocumentChangeRegistrationOptions = struct {
 
 pub const WillSaveTextDocumentParams = struct {
     textDocument: TextDocumentIdentifier,
-    reason: enum {
+    reason: ?enum {
         Manual = 1,
         AfterDelay = 2,
         FocusOut = 3,
@@ -889,7 +822,7 @@ pub const CompletionTriggerKind = enum {
 };
 
 pub const CompletionContext = struct {
-    triggerKind: CompletionTriggerKind,
+    triggerKind: ?CompletionTriggerKind,
     triggerCharacter: ?String,
 };
 
@@ -899,7 +832,7 @@ pub const CompletionList = struct {
 };
 
 pub const InsertTextFormat = enum {
-    Unknown = 0,
+    __ = 0,
     PlainText = 1,
     Snippet = 2,
 };
@@ -988,8 +921,8 @@ pub const DocumentSymbol = struct {
     detail: ?String,
     kind: SymbolKind,
     deprecated: ?bool,
-    range: Range,
-    selectionRange: Range,
+    range: ?Range,
+    selectionRange: ?Range,
     children: ?[]DocumentSymbol,
 };
 
@@ -997,7 +930,7 @@ pub const SymbolInformation = struct {
     name: String,
     kind: SymbolKind,
     deprecated: ?bool,
-    location: Location,
+    location: ?Location,
     containerName: ?String,
 };
 
@@ -1107,7 +1040,6 @@ pub const FormattingOptions = struct {
     trimTrailingWhitespace: ?bool,
     insertFinalNewline: ?bool,
     trimFinalNewlines: ?bool,
-    __: std.StringHashMap(JsonAny),
 };
 
 pub const DocumentRangeFormattingParams = struct {
@@ -1193,7 +1125,7 @@ pub const WorkDoneProgress = struct {
 };
 
 pub const SignatureHelpContext = struct {
-    triggerKind: SignatureHelpTriggerKind,
+    triggerKind: ?SignatureHelpTriggerKind,
     triggerCharacter: ?String,
     isRetrigger: bool,
     activeSignatureHelp: ?SignatureHelp,
