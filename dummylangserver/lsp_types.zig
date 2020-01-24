@@ -2,6 +2,11 @@ const std = @import("std");
 
 pub const String = []const u8;
 
+pub const IntOrString = union(enum) {
+    int: isize,
+    string: String,
+};
+
 // we don't use std.json.Value union here because:
 // 1. after a full parse we want to have all the `std.json.Value`s fully
 // transformed into only such types owned in this source file.
@@ -28,9 +33,125 @@ pub const JsonAny = union(enum) {
     }
 };
 
-pub const IntOrString = union(enum) {
-    int: isize,
-    string: String,
+pub const NotifyIn = union(enum) {
+    __cancelRequest: *CancelParams,
+    initialized: *InitializedParams,
+    exit,
+    workspace_didChangeWorkspaceFolders: *DidChangeWorkspaceFoldersParams,
+    workspace_didChangeConfiguration: *DidChangeConfigurationParams,
+    workspace_didChangeWatchedFiles: *DidChangeWatchedFilesParams,
+    textDocument_didOpen: *DidOpenTextDocumentParams,
+    textDocument_didChange: *DidChangeTextDocumentParams,
+    textDocument_willSave: *WillSaveTextDocumentParams,
+    textDocument_didSave: *DidSaveTextDocumentParams,
+    textDocument_didClose: *DidCloseTextDocumentParams,
+};
+pub const NotifyOut = union(enum) {
+    __progress: *ProgressParams,
+    window_showMessage: *ShowMessageParams,
+    window_logMessage: *LogMessageParams,
+    telemetry_event: *JsonAny,
+    textDocument_publishDiagnostics: *PublishDiagnosticsParams,
+};
+pub const RequestIn = union(enum) {
+    initialize: *InitializeParams,
+    shutdown,
+    workspace_symbol: *WorkspaceSymbolParams,
+    workspace_executeCommand: *ExecuteCommandParams,
+    textDocument_willSaveWaitUntil: *WillSaveTextDocumentParams,
+    textDocument_completion: *CompletionParams,
+    completionItem_resolve: *CompletionItem,
+    textDocument_hover: *HoverParams,
+    textDocument_signatureHelp: *SignatureHelpParams,
+    textDocument_declaration: *DeclarationParams,
+    textDocument_definition: *DefinitionParams,
+    textDocument_typeDefinition: *TypeDefinitionParams,
+    textDocument_implementation: *ImplementationParams,
+    textDocument_references: *ReferenceParams,
+    textDocument_documentHighlight: *DocumentHighlightParams,
+    textDocument_documentSymbol: *DocumentSymbolParams,
+    textDocument_codeAction: *CodeActionParams,
+    textDocument_codeLens: *CodeLensParams,
+    codeLens_resolve: *CodeLens,
+    textDocument_documentLink: *DocumentLinkParams,
+    documentLink_resolve: *DocumentLink,
+    textDocument_documentColor: *DocumentColorParams,
+    textDocument_colorPresentation: *ColorPresentationParams,
+    textDocument_formatting: *DocumentFormattingParams,
+    textDocument_rangeFormatting: *DocumentRangeFormattingParams,
+    textDocument_onTypeFormatting: *DocumentOnTypeFormattingParams,
+    textDocument_rename: *RenameParams,
+    textDocument_prepareRename: *TextDocumentPositionParams,
+    textDocument_foldingRange: *FoldingRangeParams,
+    textDocument_selectionRange: *SelectionRangeParams,
+};
+pub const RequestOut = union(enum) {
+    window_showMessageRequest: *ShowMessageRequestParams,
+    window_workDoneProgress_create: *WorkDoneProgressCreateParams,
+    client_registerCapability: *RegistrationParams,
+    client_unregisterCapability: *UnregistrationParams,
+    workspace_workspaceFolders,
+    workspace_configuration: *ConfigurationParams,
+    workspace_applyEdit: *ApplyWorkspaceEditParams,
+};
+pub const ResponseIn = union(enum) {
+    window_showMessageRequest: ?*MessageActionItem,
+    window_workDoneProgress_create,
+    client_registerCapability,
+    client_unregisterCapability,
+    workspace_workspaceFolders: ?[]WorkspaceFolder,
+    workspace_configuration: []JsonAny,
+    workspace_applyEdit: *ApplyWorkspaceEditResponse,
+};
+pub const ResponseOut = union(enum) {
+    initialize: *InitializeResult,
+    shutdown,
+    workspace_symbol: ?[]SymbolInformation,
+    workspace_executeCommand: ?*JsonAny,
+    textDocument_willSaveWaitUntil: ?[]TextEdit,
+    textDocument_completion: ?*CompletionList,
+    completionItem_resolve: *CompletionItem,
+    textDocument_hover: ?*Hover,
+    textDocument_signatureHelp: ?*SignatureHelp,
+    textDocument_declaration: ?union(enum) {
+        locations: []Location,
+        links: []LocationLink,
+    },
+    textDocument_definition: ?union(enum) {
+        locations: []Location,
+        links: []LocationLink,
+    },
+    textDocument_typeDefinition: ?union(enum) {
+        locations: []Location,
+        links: []LocationLink,
+    },
+    textDocument_implementation: ?union(enum) {
+        locations: []Location,
+        links: []LocationLink,
+    },
+    textDocument_references: ?[]Location,
+    textDocument_documentHighlight: ?[]DocumentHighlight,
+    textDocument_documentSymbol: ?union(enum) {
+        symbol_infos: []SymbolInformation,
+        doc_symbols: []DocumentSymbol,
+    },
+    textDocument_codeAction: ?[]union(enum) {
+        command: Command,
+        code_action: CodeAction,
+    },
+    textDocument_codeLens: ?[]CodeLens,
+    codeLens_resolve: *CodeLens,
+    textDocument_documentLink: ?[]DocumentLink,
+    documentLink_resolve: *DocumentLink,
+    textDocument_documentColor: []ColorInformation,
+    textDocument_colorPresentation: []ColorPresentation,
+    textDocument_formatting: ?[]TextEdit,
+    textDocument_rangeFormatting: ?[]TextEdit,
+    textDocument_onTypeFormatting: ?[]TextEdit,
+    textDocument_rename: ?[]WorkspaceEdit,
+    textDocument_prepareRename: ?*Range,
+    textDocument_foldingRange: ?[]FoldingRange,
+    textDocument_selectionRange: ?[]SelectionRange,
 };
 
 pub const Message = struct {
@@ -41,26 +162,8 @@ pub const NotificationMessage = struct {
     Message: Message,
 
     method__and__params: ?union(enum) {
-        in: union(enum) {
-            __cancelRequest: *CancelParams,
-            initialized: *InitializedParams,
-            exit: void,
-            workspace_didChangeWorkspaceFolders: *DidChangeWorkspaceFoldersParams,
-            workspace_didChangeConfiguration: *DidChangeConfigurationParams,
-            workspace_didChangeWatchedFiles: *DidChangeWatchedFilesParams,
-            textDocument_didOpen: *DidOpenTextDocumentParams,
-            textDocument_didChange: *DidChangeTextDocumentParams,
-            textDocument_willSave: *WillSaveTextDocumentParams,
-            textDocument_didSave: *DidSaveTextDocumentParams,
-            textDocument_didClose: *DidCloseTextDocumentParams,
-        },
-        out: union(enum) {
-            __progress: *ProgressParams,
-            window_showMessage: *ShowMessageParams,
-            window_logMessage: *LogMessageParams,
-            telemetry_event: *JsonAny,
-            textDocument_publishDiagnostics: *PublishDiagnosticsParams,
-        },
+        in: NotifyIn,
+        out: NotifyOut,
     },
 };
 
@@ -69,47 +172,8 @@ pub const RequestMessage = struct {
 
     id: IntOrString,
     method__and__params: ?union(enum) {
-        in: union(enum) {
-            initialize: *InitializeParams,
-            shutdown: void,
-            workspace_symbol: *WorkspaceSymbolParams,
-            workspace_executeCommand: *ExecuteCommandParams,
-            textDocument_willSaveWaitUntil: *WillSaveTextDocumentParams,
-            textDocument_completion: *CompletionParams,
-            completionItem_resolve: *CompletionItem,
-            textDocument_hover: *HoverParams,
-            textDocument_signatureHelp: *SignatureHelpParams,
-            textDocument_declaration: *DeclarationParams,
-            textDocument_definition: *DefinitionParams,
-            textDocument_typeDefinition: *TypeDefinitionParams,
-            textDocument_implementation: *ImplementationParams,
-            textDocument_references: *ReferenceParams,
-            textDocument_documentHighlight: *DocumentHighlightParams,
-            textDocument_documentSymbol: *DocumentSymbolParams,
-            textDocument_codeAction: *CodeActionParams,
-            textDocument_codeLens: *CodeLensParams,
-            codeLens_resolve: *CodeLens,
-            textDocument_documentLink: *DocumentLinkParams,
-            documentLink_resolve: *DocumentLink,
-            textDocument_documentColor: *DocumentColorParams,
-            textDocument_colorPresentation: *ColorPresentationParams,
-            textDocument_formatting: *DocumentFormattingParams,
-            textDocument_rangeFormatting: *DocumentRangeFormattingParams,
-            textDocument_onTypeFormatting: *DocumentOnTypeFormattingParams,
-            textDocument_rename: *RenameParams,
-            textDocument_prepareRename: *TextDocumentPositionParams,
-            textDocument_foldingRange: *FoldingRangeParams,
-            textDocument_selectionRange: *SelectionRangeParams,
-        },
-        out: union(enum) {
-            window_showMessageRequest: *ShowMessageRequestParams,
-            window_workDoneProgress_create: *WorkDoneProgressCreateParams,
-            client_registerCapability: *RegistrationParams,
-            client_unregisterCapability: *UnregistrationParams,
-            workspace_workspaceFolders: void,
-            workspace_configuration: *ConfigurationParams,
-            workspace_applyEdit: *ApplyWorkspaceEditParams,
-        },
+        in: RequestIn,
+        out: RequestOut,
     },
 };
 
@@ -118,65 +182,8 @@ pub const ResponseMessage = struct {
 
     id: ?IntOrString,
     result: ?union(enum) {
-        in: union(enum) {
-            window_showMessageRequest: ?*MessageActionItem,
-            window_workDoneProgress_create: void,
-            client_registerCapability: void,
-            client_unregisterCapability: void,
-            workspace_workspaceFolders: ?[]WorkspaceFolder,
-            workspace_configuration: []JsonAny,
-            workspace_applyEdit: *ApplyWorkspaceEditResponse,
-        },
-        out: union(enum) {
-            initialize: *InitializeResult,
-            shutdown: void,
-            workspace_symbol: ?[]SymbolInformation,
-            workspace_executeCommand: ?*JsonAny,
-            textDocument_willSaveWaitUntil: ?[]TextEdit,
-            textDocument_completion: ?*CompletionList,
-            completionItem_resolve: *CompletionItem,
-            textDocument_hover: ?*Hover,
-            textDocument_signatureHelp: ?*SignatureHelp,
-            textDocument_declaration: ?union(enum) {
-                locations: []Location,
-                links: []LocationLink,
-            },
-            textDocument_definition: ?union(enum) {
-                locations: []Location,
-                links: []LocationLink,
-            },
-            textDocument_typeDefinition: ?union(enum) {
-                locations: []Location,
-                links: []LocationLink,
-            },
-            textDocument_implementation: ?union(enum) {
-                locations: []Location,
-                links: []LocationLink,
-            },
-            textDocument_references: ?[]Location,
-            textDocument_documentHighlight: ?[]DocumentHighlight,
-            textDocument_documentSymbol: ?union(enum) {
-                symbol_infos: []SymbolInformation,
-                doc_symbols: []DocumentSymbol,
-            },
-            textDocument_codeAction: ?[]union(enum) {
-                command: Command,
-                code_action: CodeAction,
-            },
-            textDocument_codeLens: ?[]CodeLens,
-            codeLens_resolve: *CodeLens,
-            textDocument_documentLink: ?[]DocumentLink,
-            documentLink_resolve: *DocumentLink,
-            textDocument_documentColor: []ColorInformation,
-            textDocument_colorPresentation: []ColorPresentation,
-            textDocument_formatting: ?[]TextEdit,
-            textDocument_rangeFormatting: ?[]TextEdit,
-            textDocument_onTypeFormatting: ?[]TextEdit,
-            textDocument_rename: ?[]WorkspaceEdit,
-            textDocument_prepareRename: ?*Range,
-            textDocument_foldingRange: ?[]FoldingRange,
-            textDocument_selectionRange: ?[]SelectionRange,
-        },
+        in: ResponseIn,
+        out: ResponseOut,
     },
     error__: ?ResponseError,
 };
