@@ -241,11 +241,12 @@ pub const LocationLink = struct {
 
 pub const Diagnostic = struct {
     range: Range,
-    severity: ?enum {
+    severity: ?enum(u8) {
         Error = 1,
         Warning = 2,
         Information = 3,
         Hint = 4,
+        _,
     },
     code: ?IntOrString,
     source: ?String,
@@ -254,9 +255,10 @@ pub const Diagnostic = struct {
     relatedInformation: ?[]DiagnosticRelatedInformation,
 };
 
-pub const DiagnosticTag = enum {
+pub const DiagnosticTag = enum(u8) {
     Unnecessary = 1,
     Deprecated = 2,
+    _,
 };
 
 pub const DiagnosticRelatedInformation = struct {
@@ -300,7 +302,7 @@ pub const CreateFileOptions = struct {
 };
 
 pub const CreateFile = struct {
-    kind: String = "create",
+    kind: String = ClientCapabilities.workspace.workspaceEdit.resource_operation_kind_create,
     uri: DocumentUri,
     options: ?CreateFileOptions,
 };
@@ -311,7 +313,7 @@ pub const RenameFileOptions = struct {
 };
 
 pub const RenameFile = struct {
-    kind: String = "rename",
+    kind: String = ClientCapabilities.workspace.workspaceEdit.resource_operation_kind_rename,
     oldUri: DocumentUri,
     newUri: DocumentUri,
     options: ?RenameFileOptions,
@@ -323,7 +325,7 @@ pub const DeleteFileOptions = struct {
 };
 
 pub const DeleteFile = struct {
-    kind: String = "delete",
+    kind: String = ClientCapabilities.workspace.workspaceEdit.resource_operation_kind_delete,
     uri: DocumentUri,
     options: ?DeleteFileOptions,
 };
@@ -390,8 +392,9 @@ pub const code_action_kind = struct {
     pub const source_organizeImports = "source.organizeImports";
 };
 
-pub const CompletionItemTag = enum {
+pub const CompletionItemTag = enum(u8) {
     Deprecated = 1,
+    _,
 };
 
 pub const CompletionItemKind = enum {
@@ -911,9 +914,10 @@ pub const CompletionList = struct {
     items: []CompletionItem,
 };
 
-pub const InsertTextFormat = enum {
+pub const InsertTextFormat = enum(u8) {
     PlainText = 1,
     Snippet = 2,
+    _,
 };
 
 pub const CompletionItem = struct {
