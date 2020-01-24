@@ -3,21 +3,20 @@ const std = @import("std");
 pub const Engine = struct {
     input: std.io.InStream(std.os.ReadError),
     output: std.io.OutStream(std.os.WriteError),
+    memAllocForArenas: *std.mem.Allocator,
 
     pub fn serve(self: *Engine) !void {
-        var mem_buf = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        var mem_buf = std.heap.ArenaAllocator.init(self.memAllocForArenas);
         defer mem_buf.deinit();
 
-        const buf = &try std.ArrayList(u8).initCapacity(&mem_buf.allocator, 2 * 1024 * 1024);
+        const buf = &try std.ArrayList(u8).initCapacity(&mem_buf.allocator, 16 * 1024);
         var got_content_len: ?usize = null;
+        var did_full_full_msg = false;
 
         while (true) {
-            buf.len += read_more: {
-                const num_bytes = try self.input.read(buf.items[buf.len..]);
-                if (num_bytes != 0) break :read_more num_bytes else return error.EndOfStream;
-            };
-
+            did_full_full_msg = false;
             const so_far = buf.toSliceConst();
+
             if (got_content_len == null)
                 if (std.mem.indexOf(u8, so_far, "Content-Length:")) |idx|
                     if (idx == 0 or buf.items[idx - 1] == '\n') {
@@ -27,6 +26,7 @@ pub const Engine = struct {
                             got_content_len = try std.fmt.parseUnsigned(usize, str_content_len, 10);
                         }
                     };
+
             if (got_content_len) |content_len| {
                 if (std.mem.indexOf(u8, so_far, "\r\n\r\n")) |idx| {
                     const got = buf.items[idx + 4 .. buf.len];
@@ -38,6 +38,7 @@ pub const Engine = struct {
                         buf.len = content_len;
                     }
 
+                    did_full_full_msg = true;
                     if (content_len > 0)
                         try self.onFullIncomingPayload(buf.items[0..content_len]);
 
@@ -47,11 +48,17 @@ pub const Engine = struct {
                     got_content_len = null;
                 }
             }
+
+            if (!did_full_full_msg)
+                buf.len += read_more: {
+                    const num_bytes = try self.input.read(buf.items[buf.len..]);
+                    if (num_bytes > 0) break :read_more num_bytes else return error.EndOfStream;
+                };
         }
     }
 
     fn onFullIncomingPayload(self: *Engine, raw_json_bytes: []const u8) !void {
-        var mem = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        var mem = std.heap.ArenaAllocator.init(self.memAllocForArenas);
         defer mem.deinit();
 
         var json_parser = std.json.Parser.init(&mem.allocator, true);
