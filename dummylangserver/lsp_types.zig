@@ -3,7 +3,7 @@ const std = @import("std");
 pub const String = []const u8;
 
 pub const IntOrString = union(enum) {
-    int: isize = 0,
+    int: isize,
     string: String,
 };
 
@@ -109,27 +109,27 @@ pub const ResponseOut = union(enum) {
     completionItem_resolve: *CompletionItem,
     textDocument_hover: ?*Hover,
     textDocument_signatureHelp: ?*SignatureHelp,
-    textDocument_declaration: ?union(enum) {
-        locations: []Location,
-        links: []LocationLink,
+    textDocument_declaration: ?[]union(enum) {
+        locations: Location,
+        links: LocationLink,
     },
-    textDocument_definition: ?union(enum) {
-        locations: []Location,
-        links: []LocationLink,
+    textDocument_definition: ?[]union(enum) {
+        locations: Location,
+        links: LocationLink,
     },
-    textDocument_typeDefinition: ?union(enum) {
-        locations: []Location,
-        links: []LocationLink,
+    textDocument_typeDefinition: ?[]union(enum) {
+        locations: Location,
+        links: LocationLink,
     },
-    textDocument_implementation: ?union(enum) {
-        locations: []Location,
-        links: []LocationLink,
+    textDocument_implementation: ?[]union(enum) {
+        locations: Location,
+        links: LocationLink,
     },
     textDocument_references: ?[]Location,
     textDocument_documentHighlight: ?[]DocumentHighlight,
-    textDocument_documentSymbol: ?union(enum) {
-        symbol_infos: []SymbolInformation,
-        doc_symbols: []DocumentSymbol,
+    textDocument_documentSymbol: ?[]union(enum) {
+        symbol_infos: SymbolInformation,
+        doc_symbols: DocumentSymbol,
     },
     textDocument_codeAction: ?[]union(enum) {
         command: Command,
@@ -232,12 +232,12 @@ pub const LocationLink = struct {
 
 pub const Diagnostic = struct {
     range: Range,
-    severity: ?enum(u8) {
+    severity: ?enum {
+        Unknown = 0,
         Error = 1,
         Warning = 2,
         Information = 3,
         Hint = 4,
-        _,
     },
     code: ?IntOrString,
     source: ?String,
@@ -246,10 +246,10 @@ pub const Diagnostic = struct {
     relatedInformation: ?[]DiagnosticRelatedInformation,
 };
 
-pub const DiagnosticTag = enum(u8) {
+pub const DiagnosticTag = enum {
+    None = 0,
     Unnecessary = 1,
     Deprecated = 2,
-    _,
 };
 
 pub const DiagnosticRelatedInformation = struct {
@@ -383,9 +383,9 @@ pub const code_action_kind = struct {
     pub const source_organizeImports = "source.organizeImports";
 };
 
-pub const CompletionItemTag = enum(u8) {
+pub const CompletionItemTag = enum {
+    None = 0,
     Deprecated = 1,
-    _,
 };
 
 pub const CompletionItemKind = enum {
@@ -663,10 +663,7 @@ pub const StaticRegistrationOptions = struct {
 };
 
 pub const ServerCapabilities = struct {
-    textDocumentSync: ?union(enum) {
-        kind: TextDocumentSyncKind,
-        options: TextDocumentSyncOptions,
-    },
+    textDocumentSync: ?TextDocumentSyncOptions,
     hoverProvider: ?bool,
     completionProvider: ?CompletionOptions,
     signatureHelpProvider: ?SignatureHelpOptions,
@@ -800,7 +797,7 @@ pub const FileSystemWatcher = struct {
         Created = 1,
         Changed = 2,
         Deleted = 3,
-    } = 7,
+    },
 };
 
 pub const WorkspaceSymbolParams = struct {
@@ -901,10 +898,10 @@ pub const CompletionList = struct {
     items: []CompletionItem,
 };
 
-pub const InsertTextFormat = enum(u8) {
+pub const InsertTextFormat = enum {
+    Unknown = 0,
     PlainText = 1,
     Snippet = 2,
-    _,
 };
 
 pub const CompletionItem = struct {
@@ -1110,11 +1107,7 @@ pub const FormattingOptions = struct {
     trimTrailingWhitespace: ?bool,
     insertFinalNewline: ?bool,
     trimFinalNewlines: ?bool,
-    __: std.StringHashMap(union(enum) {
-        boolean: bool,
-        number: isize,
-        string: String,
-    }),
+    __: std.StringHashMap(JsonAny),
 };
 
 pub const DocumentRangeFormattingParams = struct {

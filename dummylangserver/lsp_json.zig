@@ -22,8 +22,34 @@ pub fn loadOther(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
             .String => |jstr| std.mem.eql(u8, "true", jstr),
             else => false,
         }
+    else if (type_id == .Int)
+        return switch (from.*) {
+            .Integer => |jint| jint,
+            .Float => |jfloat| if (jfloat < @intToFloat(f64, std.math.minInt(T)) or jfloat > @intToFloat(f64, std.math.maxInt(T)))
+                null
+            else
+                @floatToInt(T, jfloat),
+            .String => |jstr| std.fmt.parseInt(T, jstr, 10) catch null,
+            else => null,
+        }
+    else if (type_id == .Float)
+        return switch (from.*) {
+            .Float => |jfloat| jfloat,
+            .Integer => |jint| @intToFloat(T, jint),
+            .String => |jstr| std.fmt.parseFloat(T, jstr) catch null,
+            else => null,
+        }
     else if (type_id == .Enum) {
-        @compileLog(@typeName(T));
+        const TEnum = std.meta.TagType(T);
+        return switch (from.*) {
+            .Integer => |jint| std.meta.intToEnum(T, jint) catch null,
+            .String => |jstr| std.meta.stringToEnum(T, jstr) orelse (if (std.fmt.parseInt(TEnum, jstr, 10)) |i| (std.meta.intToEnum(T, i) catch null) else |_| null),
+            .Float => |jfloat| if (jfloat < @intToFloat(f64, std.math.minInt(TEnum)) or jfloat > @intToFloat(f64, std.math.maxInt(TEnum)))
+                null
+            else
+                (std.meta.intToEnum(T, @floatToInt(TEnum, jfloat)) catch null),
+            else => null,
+        };
     } else if (T == types.JsonAny)
         return switch (from.*) {
             .Null => .{ .object = null },
@@ -75,7 +101,7 @@ pub fn loadOther(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
                     const field_type = @memberType(T, i);
                     if (comptime std.mem.eql(u8, "__", field_name)) {} else if (comptime std.mem.indexOf(u8, @typeName(field_type), "HashMap")) |_|
                         @compileError(field_name ++ "\t" ++ @typeName(field_type))
-                    else if (jmap.getValue(field_name)) |*jval| {
+                    else if (jmap.getValue(std.mem.trimRight(u8, field_name, "_"))) |*jval| {
                         @field(ret, field_name) = (try loadOther(field_type, mem, jval)) orelse return null;
                     }
                 }
