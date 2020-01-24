@@ -46,6 +46,7 @@ pub const NotifyIn = union(enum) {
     textDocument_didSave: *DidSaveTextDocumentParams,
     textDocument_didClose: *DidCloseTextDocumentParams,
 };
+
 pub const NotifyOut = union(enum) {
     __progress: *ProgressParams,
     window_showMessage: *ShowMessageParams,
@@ -53,6 +54,7 @@ pub const NotifyOut = union(enum) {
     telemetry_event: *JsonAny,
     textDocument_publishDiagnostics: *PublishDiagnosticsParams,
 };
+
 pub const RequestIn = union(enum) {
     initialize: *InitializeParams,
     shutdown,
@@ -85,6 +87,7 @@ pub const RequestIn = union(enum) {
     textDocument_foldingRange: *FoldingRangeParams,
     textDocument_selectionRange: *SelectionRangeParams,
 };
+
 pub const RequestOut = union(enum) {
     window_showMessageRequest: *ShowMessageRequestParams,
     window_workDoneProgress_create: *WorkDoneProgressCreateParams,
@@ -94,6 +97,7 @@ pub const RequestOut = union(enum) {
     workspace_configuration: *ConfigurationParams,
     workspace_applyEdit: *ApplyWorkspaceEditParams,
 };
+
 pub const ResponseIn = union(enum) {
     window_showMessageRequest: ?*MessageActionItem,
     window_workDoneProgress_create,
@@ -103,6 +107,7 @@ pub const ResponseIn = union(enum) {
     workspace_configuration: []JsonAny,
     workspace_applyEdit: *ApplyWorkspaceEditResponse,
 };
+
 pub const ResponseOut = union(enum) {
     initialize: *InitializeResult,
     shutdown,

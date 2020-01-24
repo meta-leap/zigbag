@@ -1,7 +1,7 @@
 const std = @import("std");
 
-const lspt = @import("./lsp_types.zig");
-const json = @import("./json.zig");
+const types = @import("./lsp_types.zig");
+const json = @import("./lsp_json.zig");
 
 pub const Engine = struct {
     input: std.io.InStream(std.os.ReadError),
@@ -72,29 +72,29 @@ pub const Engine = struct {
             std.json.Value.Object => |hashmap| {
                 const msg_id = hashmap.getValue("id");
                 const msg_name = hashmap.getValue("method");
-                if (msg_id) |*id_jsonval| { // request or response message
-                    if (json.load(lspt.IntOrString, &mem_keep, id_jsonval)) |id| {
-                        if (msg_name) |*method| // request message
+                if (msg_id) |*id_jsonval| {
+                    if (try json.load(types.IntOrString, &mem_keep, id_jsonval)) |id| {
+                        if (msg_name) |*method|
                             self.handleIncomingRequestMsg(id, method)
-                        else // response message
+                        else
                             self.handleIncomingResponseMsg(id);
                     }
-                } else if (msg_name) |*method| // notification message
-                    self.handleIncomingNotificationMsg(method);
+                } else if (msg_name) |*method|
+                    self.handleIncomingNotifyMsg(method);
             },
         }
-        _ = json.load(lspt.JsonAny, &mem_keep, &json_tree.root); // TEMP!
+        _ = try json.load(types.JsonAny, &mem_keep, &json_tree.root); // TEMP!
     }
 
-    fn handleIncomingRequestMsg(self: *Engine, id: lspt.IntOrString, method: *const std.json.Value) void {
+    fn handleIncomingRequestMsg(self: *Engine, id: types.IntOrString, method: *const std.json.Value) void {
         std.debug.warn("REQ\t{}\t{}\n", .{ id, method });
     }
 
-    fn handleIncomingResponseMsg(self: *Engine, id: lspt.IntOrString) void {
+    fn handleIncomingResponseMsg(self: *Engine, id: types.IntOrString) void {
         std.debug.warn("RESP\t{}\n", .{id});
     }
 
-    fn handleIncomingNotificationMsg(self: *Engine, method: *const std.json.Value) void {
+    fn handleIncomingNotifyMsg(self: *Engine, method: *const std.json.Value) void {
         std.debug.warn("SIG\t{}\n", .{method});
     }
 };
