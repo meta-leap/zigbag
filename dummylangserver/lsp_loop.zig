@@ -1,5 +1,8 @@
 const std = @import("std");
 
+const lspt = @import("./lsp_types.zig");
+const json = @import("./json.zig");
+
 pub const Engine = struct {
     input: std.io.InStream(std.os.ReadError),
     output: std.io.OutStream(std.os.WriteError),
@@ -9,7 +12,7 @@ pub const Engine = struct {
         var mem_buf = std.heap.ArenaAllocator.init(self.memAllocForArenas);
         defer mem_buf.deinit();
 
-        const buf = &try std.ArrayList(u8).initCapacity(&mem_buf.allocator, 16 * 1024);
+        const buf = &try std.ArrayList(u8).initCapacity(&mem_buf.allocator, 16 * 1024); // initial cap must be big enough to catch the first occurrence of `Content-Length:` header, from there on out `buf` grows to any Content-Length greater than its current-capacity (which is never shrunk)
         var got_content_len: ?usize = null;
         var did_full_full_msg = false;
 
@@ -40,7 +43,7 @@ pub const Engine = struct {
 
                     did_full_full_msg = true;
                     if (content_len > 0)
-                        try self.onFullIncomingPayload(buf.items[0..content_len]);
+                        try self.handleFullIncomingJsonPayload(buf.items[0..content_len]);
 
                     const keep = buf.items[content_len..buf.len];
                     std.mem.copy(u8, buf.items[0..keep.len], keep);
@@ -57,20 +60,41 @@ pub const Engine = struct {
         }
     }
 
-    fn onFullIncomingPayload(self: *Engine, raw_json_bytes: []const u8) !void {
-        var mem = std.heap.ArenaAllocator.init(self.memAllocForArenas);
-        defer mem.deinit();
+    fn handleFullIncomingJsonPayload(self: *Engine, raw_json_bytes: []const u8) !void {
+        var mem_json = std.heap.ArenaAllocator.init(self.memAllocForArenas);
+        defer mem_json.deinit();
+        var mem_keep = std.heap.ArenaAllocator.init(self.memAllocForArenas);
 
-        var json_parser = std.json.Parser.init(&mem.allocator, true);
+        var json_parser = std.json.Parser.init(&mem_json.allocator, true);
         var json_tree = try json_parser.parse(raw_json_bytes);
         switch (json_tree.root) {
             else => {},
             std.json.Value.Object => |hashmap| {
-                if (hashmap.getValue("id")) |id|
-                    std.debug.warn("ID:\t{}\n", .{id});
-                if (hashmap.getValue("method")) |msg|
-                    std.debug.warn("MSG:\t{}\n", .{msg});
+                const msg_id = hashmap.getValue("id");
+                const msg_name = hashmap.getValue("method");
+                if (msg_id) |*id_jsonval| { // request or response message
+                    if (json.load(lspt.IntOrString, &mem_keep, id_jsonval)) |id| {
+                        if (msg_name) |*method| // request message
+                            self.handleIncomingRequestMsg(id, method)
+                        else // response message
+                            self.handleIncomingResponseMsg(id);
+                    }
+                } else if (msg_name) |*method| // notification message
+                    self.handleIncomingNotificationMsg(method);
             },
         }
+        _ = json.load(lspt.JsonAny, &mem_keep, &json_tree.root); // TEMP!
+    }
+
+    fn handleIncomingRequestMsg(self: *Engine, id: lspt.IntOrString, method: *const std.json.Value) void {
+        std.debug.warn("REQ\t{}\t{}\n", .{ id, method });
+    }
+
+    fn handleIncomingResponseMsg(self: *Engine, id: lspt.IntOrString) void {
+        std.debug.warn("RESP\t{}\n", .{id});
+    }
+
+    fn handleIncomingNotificationMsg(self: *Engine, method: *const std.json.Value) void {
+        std.debug.warn("SIG\t{}\n", .{method});
     }
 };

@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const String = []const u8;
+pub const String = []const u8;
 
 // we don't use std.json.Value union here because:
 // 1. after a full parse we want to have all the `std.json.Value`s fully
@@ -28,8 +28,8 @@ pub const JsonAny = union(enum) {
     }
 };
 
-const IntOrString = union(enum) {
-    number: isize,
+pub const IntOrString = union(enum) {
+    int: isize,
     string: String,
 };
 
