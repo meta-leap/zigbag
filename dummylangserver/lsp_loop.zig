@@ -43,7 +43,7 @@ pub const Engine = struct {
 
                     did_full_full_msg = true;
                     if (content_len > 0)
-                        try self.handleFullIncomingJsonPayload(buf.items[0..content_len]);
+                        try handleFullIncomingJsonPayload(self, buf.items[0..content_len]);
 
                     const keep = buf.items[content_len..buf.len];
                     std.mem.copy(u8, buf.items[0..keep.len], keep);
@@ -59,42 +59,47 @@ pub const Engine = struct {
                 };
         }
     }
-
-    fn handleFullIncomingJsonPayload(self: *Engine, raw_json_bytes: []const u8) !void {
-        var mem_json = std.heap.ArenaAllocator.init(self.memAllocForArenas);
-        defer mem_json.deinit();
-        var mem_keep = std.heap.ArenaAllocator.init(self.memAllocForArenas);
-
-        var json_parser = std.json.Parser.init(&mem_json.allocator, true);
-        var json_tree = try json_parser.parse(raw_json_bytes);
-        switch (json_tree.root) {
-            else => {},
-            std.json.Value.Object => |hashmap| {
-                const msg_id = hashmap.getValue("id");
-                const msg_name = hashmap.getValue("method");
-                if (msg_id) |*id_jsonval| {
-                    if (try json.load(types.IntOrString, &mem_keep, id_jsonval)) |id| {
-                        if (msg_name) |*method|
-                            self.handleIncomingRequestMsg(id, method)
-                        else
-                            self.handleIncomingResponseMsg(id);
-                    }
-                } else if (msg_name) |*method|
-                    self.handleIncomingNotifyMsg(method);
-            },
-        }
-        _ = try json.load(types.JsonAny, &mem_keep, &json_tree.root); // TEMP!
-    }
-
-    fn handleIncomingRequestMsg(self: *Engine, id: types.IntOrString, method: *const std.json.Value) void {
-        std.debug.warn("REQ\t{}\t{}\n", .{ id, method });
-    }
-
-    fn handleIncomingResponseMsg(self: *Engine, id: types.IntOrString) void {
-        std.debug.warn("RESP\t{}\n", .{id});
-    }
-
-    fn handleIncomingNotifyMsg(self: *Engine, method: *const std.json.Value) void {
-        std.debug.warn("SIG\t{}\n", .{method});
-    }
 };
+
+fn handleFullIncomingJsonPayload(self: *Engine, raw_json_bytes: []const u8) !void {
+    var mem_json = std.heap.ArenaAllocator.init(self.memAllocForArenas);
+    defer mem_json.deinit();
+    var mem_keep = std.heap.ArenaAllocator.init(self.memAllocForArenas);
+
+    var json_parser = std.json.Parser.init(&mem_json.allocator, true);
+    var json_tree = try json_parser.parse(raw_json_bytes);
+    switch (json_tree.root) {
+        else => {},
+        std.json.Value.Object => |*hashmap| {
+            const msg_id = hashmap.getValue("id");
+            const msg_name = hashmap.getValue("method");
+            if (msg_id) |*id_jsonval| {
+                if (try json.loadBasic(types.IntOrString, &mem_keep, id_jsonval)) |id| {
+                    if (msg_name) |jstr| switch (jstr) {
+                        .String => |method_name| try handleIncomingRequestMsg(self, &mem_keep, id, method_name, hashmap.getValue("params")),
+                        else => {},
+                    } else
+                        handleIncomingResponseMsg(self, &mem_keep, id);
+                }
+            } else if (msg_name) |jstr| switch (jstr) {
+                .String => |method_name| handleIncomingNotifyMsg(self, &mem_keep, method_name),
+                else => {},
+            };
+        },
+    }
+    _ = try json.loadBasic(types.JsonAny, &mem_keep, &json_tree.root); // TEMP!
+}
+
+fn handleIncomingRequestMsg(self: *Engine, mem: *std.heap.ArenaAllocator, id: types.IntOrString, method: []const u8, params: ?std.json.Value) !void {
+    const union_member_name = @import("./xstd.mem.zig").replaceScalar(u8, try std.mem.dupe(&mem.allocator, u8, method), "$/", '_');
+    const req = if (params) |*p| json.loadUnion(types.RequestIn, mem, p, union_member_name) else null;
+    std.debug.warn("REQ\t{}\t{}\t{}\n", .{ id, method, params });
+}
+
+fn handleIncomingResponseMsg(self: *Engine, mem: *std.heap.ArenaAllocator, id: types.IntOrString) void {
+    std.debug.warn("RESP\t{}\n", .{id});
+}
+
+fn handleIncomingNotifyMsg(self: *Engine, mem: *std.heap.ArenaAllocator, method: []const u8) void {
+    std.debug.warn("SIG\t{}\n", .{method});
+}

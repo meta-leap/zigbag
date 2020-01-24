@@ -354,7 +354,7 @@ pub const DocumentFilter = struct {
 pub const DocumentSelector = []DocumentFilter;
 
 pub const MarkupContent = struct {
-    kind: string,
+    kind: String,
     value: String,
 
     pub const kind = struct {
@@ -1119,7 +1119,7 @@ pub const FormattingOptions = struct {
     trimTrailingWhitespace: ?bool,
     insertFinalNewline: ?bool,
     trimFinalNewlines: ?bool,
-    __: StringHashMap(union(enum) {
+    __: std.StringHashMap(union(enum) {
         boolean: bool,
         number: isize,
         string: String,
@@ -1134,7 +1134,7 @@ pub const DocumentRangeFormattingParams = struct {
 };
 
 pub const DocumentOnTypeFormattingParams = struct {
-    textDocument = TextDocumentIdentifier,
+    textDocument: TextDocumentIdentifier,
     position: Position,
     ch: String,
     options: FormattingOptions,
