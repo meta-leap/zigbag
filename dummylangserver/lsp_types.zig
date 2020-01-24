@@ -3,7 +3,7 @@ const std = @import("std");
 pub const String = []const u8;
 
 pub const IntOrString = union(enum) {
-    int: isize,
+    int: isize = 0,
     string: String,
 };
 
@@ -22,15 +22,6 @@ pub const JsonAny = union(enum) {
     float: f64,
     array: []JsonAny,
     object: ?*std.StringHashMap(JsonAny),
-
-    pub fn init(from: *std.json.Value) JsonAny {
-        switch (from) {
-            .Null => return JsonAny{ .object = null },
-            .Bool => |b| return JsonAny{ .boolean = b },
-            .Integer => |i| return JsonAny{ .int = i },
-            .Float => |f| return JsonAny{ .float = f },
-        }
-    }
 };
 
 pub const NotifyIn = union(enum) {
@@ -658,10 +649,6 @@ pub const ExecuteCommandOptions = struct {
 pub const SaveOptions = struct {
     includeText: ?bool,
 };
-
-pub const ColorProviderOptions = struct {};
-
-pub const FoldingRangeProviderOptions = struct {};
 
 pub const TextDocumentSyncOptions = struct {
     openClose: ?bool,

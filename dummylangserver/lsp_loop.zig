@@ -74,7 +74,7 @@ fn handleFullIncomingJsonPayload(self: *Engine, raw_json_bytes: []const u8) !voi
             const msg_id = hashmap.getValue("id");
             const msg_name = hashmap.getValue("method");
             if (msg_id) |*id_jsonval| {
-                if (try json.loadBasic(types.IntOrString, &mem_keep, id_jsonval)) |id| {
+                if (try json.loadOther(types.IntOrString, &mem_keep, id_jsonval)) |id| {
                     if (msg_name) |jstr| switch (jstr) {
                         .String => |method_name| try handleIncomingRequestMsg(self, &mem_keep, id, method_name, hashmap.getValue("params")),
                         else => {},
@@ -87,13 +87,13 @@ fn handleFullIncomingJsonPayload(self: *Engine, raw_json_bytes: []const u8) !voi
             };
         },
     }
-    _ = try json.loadBasic(types.JsonAny, &mem_keep, &json_tree.root); // TEMP!
+    _ = try json.loadOther(types.JsonAny, &mem_keep, &json_tree.root); // TEMP!
 }
 
 fn handleIncomingRequestMsg(self: *Engine, mem: *std.heap.ArenaAllocator, id: types.IntOrString, method: []const u8, params: ?std.json.Value) !void {
+    std.debug.warn("REQ\t{}\t{}\t{}\n", .{ id, method, params });
     const union_member_name = @import("./xstd.mem.zig").replaceScalar(u8, try std.mem.dupe(&mem.allocator, u8, method), "$/", '_');
     const req = if (params) |*p| json.loadUnion(types.RequestIn, mem, p, union_member_name) else null;
-    std.debug.warn("REQ\t{}\t{}\t{}\n", .{ id, method, params });
 }
 
 fn handleIncomingResponseMsg(self: *Engine, mem: *std.heap.ArenaAllocator, id: types.IntOrString) void {
