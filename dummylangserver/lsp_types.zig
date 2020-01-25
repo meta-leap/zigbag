@@ -185,15 +185,15 @@ pub const Range = struct {
 };
 
 pub const Location = struct {
-    uri: ?DocumentUri,
-    range: ?Range,
+    uri: DocumentUri,
+    range: Range,
 };
 
 pub const LocationLink = struct {
     originSelectionRange: ?Range,
-    targetUri: ?DocumentUri,
-    targetRange: ?Range,
-    targetSelectionRange: ?Range,
+    targetUri: DocumentUri,
+    targetRange: Range,
+    targetSelectionRange: Range,
 };
 
 pub const Diagnostic = struct {
@@ -235,8 +235,8 @@ pub const TextEdit = struct {
 };
 
 pub const TextDocumentEdit = struct {
-    textDocument: ?VersionedTextDocumentIdentifier,
-    edits: ?[]TextEdit,
+    textDocument: VersionedTextDocumentIdentifier,
+    edits: []TextEdit,
 };
 
 pub const VersionedTextDocumentIdentifier = struct {
@@ -931,8 +931,8 @@ pub const DocumentSymbol = struct {
     detail: ?String,
     kind: SymbolKind,
     deprecated: ?bool,
-    range: ?Range,
-    selectionRange: ?Range,
+    range: Range,
+    selectionRange: Range,
     children: ?[]DocumentSymbol,
 };
 
@@ -940,7 +940,7 @@ pub const SymbolInformation = struct {
     name: String,
     kind: SymbolKind,
     deprecated: ?bool,
-    location: ?Location,
+    location: Location,
     containerName: ?String,
 };
 
