@@ -263,7 +263,7 @@ pub const WorkspaceEdit = struct {
             options: ?struct {
                 overwrite: ?bool,
                 ignoreIfExists: ?bool,
-            },
+            } = null,
         },
         file_rename: struct {
             kind: String = "rename",
@@ -272,7 +272,7 @@ pub const WorkspaceEdit = struct {
             options: ?struct {
                 overwrite: ?bool,
                 ignoreIfExists: ?bool,
-            },
+            } = null,
         },
         file_delete: struct {
             kind: String = "delete",
@@ -280,7 +280,7 @@ pub const WorkspaceEdit = struct {
             options: ?struct {
                 recursive: ?bool,
                 ignoreIfNotExists: ?bool,
-            },
+            } = null,
         },
     },
 };

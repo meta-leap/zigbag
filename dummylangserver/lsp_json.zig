@@ -14,13 +14,13 @@ pub fn loadOther(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
     else if (T == types.String)
         return switch (from.*) {
             .String => |jstr| jstr,
-            else => "",
+            else => null,
         }
     else if (T == bool)
         return switch (from.*) {
             .Bool => |jbool| jbool,
-            .String => |jstr| std.mem.eql(u8, "true", jstr),
-            else => false,
+            .String => |jstr| if (std.mem.eql(u8, "true", jstr)) true else (if (std.mem.eql(u8, "false", jstr)) false else null),
+            else => null,
         }
     else if (type_id == .Int)
         return switch (from.*) {
@@ -106,8 +106,6 @@ pub fn loadOther(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
             },
             else => return null,
         }
-    } else if (type_id == .Union) {
-        std.debug.warn("TID\t{}\n", .{type_id});
     } else {
         std.debug.warn("TID\t{}\n", .{type_id});
     }
@@ -118,7 +116,6 @@ pub fn loadUnion(comptime TUnion: type, mem: *std.heap.ArenaAllocator, from: *co
     if (@typeId(TUnion) != .Union)
         @compileError("union type expected for 'TUnion'");
     comptime var i = @memberCount(TUnion);
-    @setEvalBranchQuota(2020);
     inline while (i > 0) {
         i -= 1;
         if (std.mem.eql(u8, @memberName(TUnion, i), member_name)) {
