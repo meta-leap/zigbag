@@ -89,8 +89,6 @@ pub fn loadOther(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
             else => return null,
         }
     } else if (type_id == .Struct) {
-        comptime if (std.mem.indexOf(u8, @typeName(T), "HashMap")) |_|
-            @compileError(@typeName(T));
         switch (from.*) {
             .Object => |*jmap| {
                 var ret = @import("./xstd.mem.zig").zeroed(T);
@@ -101,8 +99,6 @@ pub fn loadOther(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
                     const field_type = @memberType(T, i);
                     if (comptime std.mem.eql(u8, field_name, @typeName(field_type)))
                         @field(ret, field_name) = (try loadOther(field_type, mem, from)) orelse return null
-                    else if (comptime std.mem.indexOf(u8, @typeName(field_type), "HashMap")) |_|
-                        @compileError(field_name ++ "\t" ++ @typeName(field_type))
                     else if (jmap.getValue(std.mem.trimRight(u8, field_name, "_"))) |*jval|
                         @field(ret, field_name) = (try loadOther(field_type, mem, jval)) orelse return null;
                 }

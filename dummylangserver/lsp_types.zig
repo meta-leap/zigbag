@@ -109,17 +109,32 @@ pub const ResponseOut = union(enum) {
     completionItem_resolve: *CompletionItem,
     textDocument_hover: ?*Hover,
     textDocument_signatureHelp: ?*SignatureHelp,
-    textDocument_declaration: ?[]LocOrLink,
-    textDocument_definition: ?[]LocOrLink,
-    textDocument_typeDefinition: ?[]LocOrLink,
-    textDocument_implementation: ?[]LocOrLink,
+    textDocument_declaration: ?union {
+        locations: []Location,
+        links: []LocationLink,
+    },
+    textDocument_definition: ?union {
+        locations: []Location,
+        links: []LocationLink,
+    },
+    textDocument_typeDefinition: ?union {
+        locations: []Location,
+        links: []LocationLink,
+    },
+    textDocument_implementation: ?union {
+        locations: []Location,
+        links: []LocationLink,
+    },
     textDocument_references: ?[]Location,
     textDocument_documentHighlight: ?[]DocumentHighlight,
-    textDocument_documentSymbol: ?[]struct {
-        SymbolInformation: SymbolInformation,
-        DocumentSymbol: DocumentSymbol,
+    textDocument_documentSymbol: ?union {
+        flat: []SymbolInformation,
+        hierarchy: []DocumentSymbol,
     },
-    textDocument_codeAction: ?[]CodeAction,
+    textDocument_codeAction: ?[]union {
+        code_action: CodeAction,
+        command: Command,
+    },
     textDocument_codeLens: ?[]CodeLens,
     codeLens_resolve: *CodeLens,
     textDocument_documentLink: ?[]DocumentLink,
@@ -167,11 +182,6 @@ pub const Position = struct {
 pub const Range = struct {
     start: Position,
     end: Position,
-};
-
-pub const LocOrLink = struct {
-    Location: Location,
-    LocationLink: LocationLink,
 };
 
 pub const Location = struct {
@@ -258,9 +268,9 @@ pub const FileCreateRenameDelete = struct {
 
 pub const WorkspaceEdit = struct {
     changes: ?std.AutoHashMap(DocumentUri, []TextEdit),
-    documentChanges: ?[]struct {
-        FileCreateRenameDelete: FileCreateRenameDelete,
-        TextDocumentEdit: TextDocumentEdit,
+    documentChanges: ?[]union {
+        file_operation: FileCreateRenameDelete,
+        text_document_edit: TextDocumentEdit,
     },
 };
 
