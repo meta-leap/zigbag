@@ -253,24 +253,35 @@ pub const TextDocumentIdentifier = struct {
     uri: DocumentUri,
 };
 
-pub const FileCreateRenameDelete = struct {
-    kind: ?String,
-    uri: ?DocumentUri,
-    oldUri: ?DocumentUri,
-    newUri: ?DocumentUri,
-    options: ?struct {
-        overwrite: ?bool,
-        ignoreIfExists: ?bool,
-        recursive: ?bool,
-        ignoreIfNotExists: ?bool,
-    },
-};
-
 pub const WorkspaceEdit = struct {
     changes: ?std.AutoHashMap(DocumentUri, []TextEdit),
     documentChanges: ?[]union {
-        file_operation: FileCreateRenameDelete,
-        text_document_edit: TextDocumentEdit,
+        edit: TextDocumentEdit,
+        file_create: struct {
+            kind: String = "create",
+            uri: DocumentUri,
+            options: ?struct {
+                overwrite: ?bool,
+                ignoreIfExists: ?bool,
+            },
+        },
+        file_rename: struct {
+            kind: String = "rename",
+            oldUri: DocumentUri,
+            newUri: DocumentUri,
+            options: ?struct {
+                overwrite: ?bool,
+                ignoreIfExists: ?bool,
+            },
+        },
+        file_delete: struct {
+            kind: String = "delete",
+            uri: DocumentUri,
+            options: ?struct {
+                recursive: ?bool,
+                ignoreIfNotExists: ?bool,
+            },
+        },
     },
 };
 
