@@ -24,7 +24,7 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
         }
     else if (type_id == .Int)
         return switch (from.*) {
-            .Integer => |jint| jint,
+            .Integer => |jint| @intCast(T, jint),
             .Float => |jfloat| if (jfloat < @intToFloat(f64, std.math.minInt(T)) or jfloat > @intToFloat(f64, std.math.maxInt(T)))
                 null
             else

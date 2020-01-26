@@ -25,17 +25,17 @@ pub const JsonAny = union(enum) {
 };
 
 pub const NotifyIn = union(enum) {
-    __cancelRequest: fn (*CancelParams) void,
-    initialized: fn (*InitializedParams) void,
-    exit: fn () void,
-    workspace_didChangeWorkspaceFolders: fn (*DidChangeWorkspaceFoldersParams) void,
-    workspace_didChangeConfiguration: fn (*DidChangeConfigurationParams) void,
-    workspace_didChangeWatchedFiles: fn (*DidChangeWatchedFilesParams) void,
-    textDocument_didOpen: fn (*DidOpenTextDocumentParams) void,
-    textDocument_didChange: fn (*DidChangeTextDocumentParams) void,
-    textDocument_willSave: fn (*WillSaveTextDocumentParams) void,
-    textDocument_didSave: fn (*DidSaveTextDocumentParams) void,
-    textDocument_didClose: fn (*DidCloseTextDocumentParams) void,
+    __cancelRequest: fn (*std.heap.ArenaAllocator, CancelParams) anyerror!void,
+    initialized: fn (*std.heap.ArenaAllocator, InitializedParams) anyerror!void,
+    exit: fn (*std.heap.ArenaAllocator) anyerror!void,
+    workspace_didChangeWorkspaceFolders: fn (*std.heap.ArenaAllocator, DidChangeWorkspaceFoldersParams) anyerror!void,
+    workspace_didChangeConfiguration: fn (*std.heap.ArenaAllocator, DidChangeConfigurationParams) anyerror!void,
+    workspace_didChangeWatchedFiles: fn (*std.heap.ArenaAllocator, DidChangeWatchedFilesParams) anyerror!void,
+    textDocument_didOpen: fn (*std.heap.ArenaAllocator, DidOpenTextDocumentParams) anyerror!void,
+    textDocument_didChange: fn (*std.heap.ArenaAllocator, DidChangeTextDocumentParams) anyerror!void,
+    textDocument_willSave: fn (*std.heap.ArenaAllocator, WillSaveTextDocumentParams) anyerror!void,
+    textDocument_didSave: fn (*std.heap.ArenaAllocator, DidSaveTextDocumentParams) anyerror!void,
+    textDocument_didClose: fn (*std.heap.ArenaAllocator, DidCloseTextDocumentParams) anyerror!void,
 };
 
 pub const NotifyOut = union(enum) {
@@ -47,36 +47,54 @@ pub const NotifyOut = union(enum) {
 };
 
 pub const RequestIn = union(enum) {
-    initialize: fn (*InitializeParams) void,
-    shutdown: fn () void,
-    workspace_symbol: fn (*WorkspaceSymbolParams) void,
-    workspace_executeCommand: fn (*ExecuteCommandParams) void,
-    textDocument_willSaveWaitUntil: fn (*WillSaveTextDocumentParams) void,
-    textDocument_completion: fn (*CompletionParams) void,
-    completionItem_resolve: fn (*CompletionItem) void,
-    textDocument_hover: fn (*HoverParams) void,
-    textDocument_signatureHelp: fn (*SignatureHelpParams) void,
-    textDocument_declaration: fn (*DeclarationParams) void,
-    textDocument_definition: fn (*DefinitionParams) void,
-    textDocument_typeDefinition: fn (*TypeDefinitionParams) void,
-    textDocument_implementation: fn (*ImplementationParams) void,
-    textDocument_references: fn (*ReferenceParams) void,
-    textDocument_documentHighlight: fn (*DocumentHighlightParams) void,
-    textDocument_documentSymbol: fn (*DocumentSymbolParams) void,
-    textDocument_codeAction: fn (*CodeActionParams) void,
-    textDocument_codeLens: fn (*CodeLensParams) void,
-    codeLens_resolve: fn (*CodeLens) void,
-    textDocument_documentLink: fn (*DocumentLinkParams) void,
-    documentLink_resolve: fn (*DocumentLink) void,
-    textDocument_documentColor: fn (*DocumentColorParams) void,
-    textDocument_colorPresentation: fn (*ColorPresentationParams) void,
-    textDocument_formatting: fn (*DocumentFormattingParams) void,
-    textDocument_rangeFormatting: fn (*DocumentRangeFormattingParams) void,
-    textDocument_onTypeFormatting: fn (*DocumentOnTypeFormattingParams) void,
-    textDocument_rename: fn (*RenameParams) void,
-    textDocument_prepareRename: fn (*TextDocumentPositionParams) void,
-    textDocument_foldingRange: fn (*FoldingRangeParams) void,
-    textDocument_selectionRange: fn (*SelectionRangeParams) void,
+    initialize: fn (*std.heap.ArenaAllocator, InitializeParams) anyerror!InitializeResult,
+    shutdown: fn (*std.heap.ArenaAllocator) anyerror!void,
+    workspace_symbol: fn (*std.heap.ArenaAllocator, WorkspaceSymbolParams) anyerror!?[]SymbolInformation,
+    workspace_executeCommand: fn (*std.heap.ArenaAllocator, ExecuteCommandParams) anyerror!?JsonAny,
+    textDocument_willSaveWaitUntil: fn (*std.heap.ArenaAllocator, WillSaveTextDocumentParams) anyerror!?[]TextEdit,
+    textDocument_completion: fn (*std.heap.ArenaAllocator, CompletionParams) anyerror!?CompletionList,
+    completionItem_resolve: fn (*std.heap.ArenaAllocator, CompletionItem) anyerror!CompletionItem,
+    textDocument_hover: fn (*std.heap.ArenaAllocator, HoverParams) anyerror!?Hover,
+    textDocument_signatureHelp: fn (*std.heap.ArenaAllocator, SignatureHelpParams) anyerror!?SignatureHelp,
+    textDocument_declaration: fn (*std.heap.ArenaAllocator, DeclarationParams) anyerror!?union {
+        locations: []Location,
+        links: []LocationLink,
+    },
+    textDocument_definition: fn (*std.heap.ArenaAllocator, DefinitionParams) anyerror!?union {
+        locations: []Location,
+        links: []LocationLink,
+    },
+    textDocument_typeDefinition: fn (*std.heap.ArenaAllocator, TypeDefinitionParams) anyerror!?union {
+        locations: []Location,
+        links: []LocationLink,
+    },
+    textDocument_implementation: fn (*std.heap.ArenaAllocator, ImplementationParams) anyerror!?union {
+        locations: []Location,
+        links: []LocationLink,
+    },
+    textDocument_references: fn (*std.heap.ArenaAllocator, ReferenceParams) anyerror!?[]Location,
+    textDocument_documentHighlight: fn (*std.heap.ArenaAllocator, DocumentHighlightParams) anyerror!?[]DocumentHighlight,
+    textDocument_documentSymbol: fn (*std.heap.ArenaAllocator, DocumentSymbolParams) anyerror!?union {
+        flat: []SymbolInformation,
+        hierarchy: []DocumentSymbol,
+    },
+    textDocument_codeAction: fn (*std.heap.ArenaAllocator, CodeActionParams) anyerror!?[]union {
+        code_action: CodeAction,
+        command: Command,
+    },
+    textDocument_codeLens: fn (*std.heap.ArenaAllocator, CodeLensParams) anyerror!?[]CodeLens,
+    codeLens_resolve: fn (*std.heap.ArenaAllocator, CodeLens) anyerror!CodeLens,
+    textDocument_documentLink: fn (*std.heap.ArenaAllocator, DocumentLinkParams) anyerror!?[]DocumentLink,
+    documentLink_resolve: fn (*std.heap.ArenaAllocator, DocumentLink) anyerror!DocumentLink,
+    textDocument_documentColor: fn (*std.heap.ArenaAllocator, DocumentColorParams) anyerror![]ColorInformation,
+    textDocument_colorPresentation: fn (*std.heap.ArenaAllocator, ColorPresentationParams) anyerror![]ColorPresentation,
+    textDocument_formatting: fn (*std.heap.ArenaAllocator, DocumentFormattingParams) anyerror!?[]TextEdit,
+    textDocument_rangeFormatting: fn (*std.heap.ArenaAllocator, DocumentRangeFormattingParams) anyerror!?[]TextEdit,
+    textDocument_onTypeFormatting: fn (*std.heap.ArenaAllocator, DocumentOnTypeFormattingParams) anyerror!?[]TextEdit,
+    textDocument_rename: fn (*std.heap.ArenaAllocator, RenameParams) anyerror!?[]WorkspaceEdit,
+    textDocument_prepareRename: fn (*std.heap.ArenaAllocator, TextDocumentPositionParams) anyerror!?Range,
+    textDocument_foldingRange: fn (*std.heap.ArenaAllocator, FoldingRangeParams) anyerror!?[]FoldingRange,
+    textDocument_selectionRange: fn (*std.heap.ArenaAllocator, SelectionRangeParams) anyerror!?[]SelectionRange,
 };
 
 pub const RequestOut = union(enum) {
@@ -255,7 +273,7 @@ pub const TextDocumentIdentifier = struct {
 };
 
 pub const WorkspaceEdit = struct {
-    changes: ?std.AutoHashMap(DocumentUri, []TextEdit),
+    changes: ?std.StringHashMap([]TextEdit), // ?std.AutoHashMap(DocumentUri, []TextEdit),
     documentChanges: ?[]union {
         edit: TextDocumentEdit,
         file_create: struct {
@@ -556,8 +574,8 @@ pub const InitializeResult = struct {
     capabilities: ServerCapabilities,
     serverInfo: ?struct {
         name: String,
-        version: ?String,
-    },
+        version: ?String = null,
+    } = null,
 };
 
 pub const TextDocumentSyncKind = enum {
@@ -618,36 +636,36 @@ pub const StaticRegistrationOptions = struct {
 };
 
 pub const ServerCapabilities = struct {
-    textDocumentSync: ?TextDocumentSyncOptions,
-    hoverProvider: ?bool,
-    completionProvider: ?CompletionOptions,
-    signatureHelpProvider: ?SignatureHelpOptions,
-    definitionProvider: ?bool,
-    typeDefinitionProvider: ?bool,
-    implementationProvider: ?bool,
-    referencesProvider: ?bool,
-    documentHighlightProvider: ?bool,
-    documentSymbolProvider: ?bool,
-    workspaceSymbolProvider: ?bool,
-    codeActionProvider: ?bool,
-    codeLensProvider: ?CodeLensOptions,
-    documentFormattingProvider: ?bool,
-    documentRangeFormattingProvider: ?bool,
-    documentOnTypeFormattingProvider: ?DocumentOnTypeFormattingOptions,
-    renameProvider: ?bool,
-    documentLinkProvider: ?DocumentLinkOptions,
-    colorProvider: ?bool,
-    foldingRangeProvider: ?bool,
-    declarationProvider: ?bool,
-    executeCommandProvider: ?ExecuteCommandOptions,
+    textDocumentSync: ?TextDocumentSyncOptions = null,
+    hoverProvider: ?bool = null,
+    completionProvider: ?CompletionOptions = null,
+    signatureHelpProvider: ?SignatureHelpOptions = null,
+    definitionProvider: ?bool = null,
+    typeDefinitionProvider: ?bool = null,
+    implementationProvider: ?bool = null,
+    referencesProvider: ?bool = null,
+    documentHighlightProvider: ?bool = null,
+    documentSymbolProvider: ?bool = null,
+    workspaceSymbolProvider: ?bool = null,
+    codeActionProvider: ?bool = null,
+    codeLensProvider: ?CodeLensOptions = null,
+    documentFormattingProvider: ?bool = null,
+    documentRangeFormattingProvider: ?bool = null,
+    documentOnTypeFormattingProvider: ?DocumentOnTypeFormattingOptions = null,
+    renameProvider: ?bool = null,
+    documentLinkProvider: ?DocumentLinkOptions = null,
+    colorProvider: ?bool = null,
+    foldingRangeProvider: ?bool = null,
+    declarationProvider: ?bool = null,
+    executeCommandProvider: ?ExecuteCommandOptions = null,
     workspace: ?struct {
         workspaceFolders: ?struct {
-            supported: ?bool,
-            changeNotifications: ?bool,
-        },
-    },
-    selectionRangeProvider: ?bool,
-    experimental: ?JsonAny,
+            supported: ?bool = null,
+            changeNotifications: ?bool = null,
+        } = null,
+    } = null,
+    selectionRangeProvider: ?bool = null,
+    experimental: ?JsonAny = null,
 };
 
 pub const InitializedParams = struct {};
@@ -736,6 +754,7 @@ pub const DidChangeWatchedFilesParams = struct {
 pub const FileEvent = struct {
     uri: DocumentUri,
     type__: enum {
+        __ = 0,
         Created = 1,
         Changed = 2,
         Deleted = 3,

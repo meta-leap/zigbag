@@ -8,22 +8,26 @@ pub const Engine = struct {
     output: std.io.OutStream(std.os.WriteError),
     mem_alloc_for_arenas: *std.mem.Allocator,
 
-    handlers_requests: [@memberCount(types.RequestIn)][]usize = ([_][]usize{&[_]usize{}}) ** @memberCount(types.RequestIn),
-    handlers_notifies: [@memberCount(types.NotifyIn)][]usize = ([_][]usize{&[_]usize{}}) ** @memberCount(types.NotifyIn),
+    handlers_requests: [@memberCount(types.RequestIn)]usize = ([_]usize{0}) ** @memberCount(types.RequestIn),
+    handlers_notifies: [@memberCount(types.NotifyIn)]usize = ([_]usize{0}) ** @memberCount(types.NotifyIn),
+
+    pub var setup = types.InitializeResult{
+        .serverInfo = .{ .name = "" }, // if empty, will be set to `process.args[0]`
+        .capabilities = .{},
+    };
 
     pub fn on(self: *Engine, comptime union_member_of_incoming_request_or_notify: var) void {
         const T = @TypeOf(union_member_of_incoming_request_or_notify);
-        if (T != types.RequestIn and T != types.NotifyIn)
+        comptime if (T != types.RequestIn and T != types.NotifyIn)
             @compileError(@typeName(T));
+
         comptime const idx = @enumToInt(std.meta.activeTag(union_member_of_incoming_request_or_notify));
         const fn_ptr = @ptrToInt(@field(union_member_of_incoming_request_or_notify, @memberName(T, idx)));
-        var slice = if (T == types.RequestIn) self.handlers_requests[idx] else self.handlers_notifies[idx];
-        for (slice) |fn_ptr_have|
-            if (fn_ptr_have == fn_ptr)
-                return;
-
-        (if (T == types.RequestIn) self.handlers_requests else self.handlers_notifies)[idx] = slice;
-        std.debug.warn("TAG_IDX\t{}\t{}\n", .{ idx, fn_ptr });
+        const arr = &(comptime if (T == types.RequestIn) self.handlers_requests else self.handlers_notifies);
+        if (arr[idx] != 0 and arr[idx] != fn_ptr)
+            @panic("Engine.on(" ++ @memberName(T, idx) ++ ") already subscribed-to, cannot overwrite existing subscriber");
+        arr[idx] = fn_ptr;
+        std.debug.warn("TAG_IDX {}\t{}\t{}\n", .{ @memberName(T, idx), idx, fn_ptr });
     }
 
     pub fn serve(self: *Engine) !void {
@@ -31,10 +35,12 @@ pub const Engine = struct {
         defer mem_buf.deinit();
         const buf = &try std.ArrayList(u8).initCapacity(&mem_buf.allocator, 16 * 1024); // initial cap must be big enough to catch the first occurrence of `Content-Length:` header, from there on out `buf` grows to any Content-Length greater than its current-capacity (which is never shrunk)
 
-        self.on(types.RequestIn{ .initialize = onInitializeRequest });
+        _ = self.on(types.RequestIn{ .initialize = onInitialize });
+        _ = self.on(types.NotifyIn{ .__cancelRequest = onCancel });
+        _ = self.on(types.NotifyIn{ .exit = onExit });
+
         var got_content_len: ?usize = null;
         var did_full_full_msg = false;
-
         while (true) {
             did_full_full_msg = false;
             const so_far = buf.toSliceConst();
@@ -71,7 +77,7 @@ pub const Engine = struct {
                 }
             }
 
-            if (!did_full_full_msg) // might have another full msg in buffer already, no point in reading further for now
+            if (!did_full_full_msg) // might have another full msg in buffer already, no point in waiting around for more input right now, the loop's next iteration will figure this out
                 buf.len += read_more: {
                     const num_bytes = try self.input.read(buf.items[buf.len..]);
                     if (num_bytes > 0) break :read_more num_bytes else return error.EndOfStream;
@@ -113,28 +119,42 @@ fn handleFullIncomingJsonPayload(self: *Engine, raw_json_bytes: []const u8) !voi
 fn handleIncomingMsg(comptime T: type, self: *Engine, mem: *std.heap.ArenaAllocator, id: ?types.IntOrString, method_name: ?[]const u8, payload: ?std.json.Value) !void {
     const method = if (method_name) |name| name else "TODO: fetch from dangling response-awaiters";
     const member_name = @import("./xstd.mem.zig").replaceScalar(u8, try std.mem.dupe(&mem.allocator, u8, method), "$/", '_');
+
     comptime var i = @memberCount(T);
     inline while (i > 0) {
         i -= 1;
         if (std.mem.eql(u8, @memberName(T, i), member_name)) {
-            if (T == types.NotifyIn) {} else if (T == types.RequestIn) {
+            if (T == types.NotifyIn or T == types.RequestIn) {
                 const type_fn_info = @typeInfo(@memberType(T, i)).Fn;
-                if (type_fn_info.args.len == 0) {
-                    // TODO!
-                } else {
-                    const arg_type = comptime type_fn_info.args[0].arg_type.?;
-                    const arg_ptr: ?arg_type = if (payload) |*p|
-                        try json.unmarshal(type_fn_info.args[0].arg_type.?, mem, p)
-                    else
-                        null;
-                }
-            } else if (T == types.ResponseIn) {} else
+                const paramless = (type_fn_info.args.len == 1);
+                const param_val = if (paramless) null else (if (payload) |*p|
+                    try json.unmarshal(type_fn_info.args[1].arg_type.?, mem, p)
+                else
+                    null);
+            } else if (T == types.ResponseIn) {
+                // TODO
+            } else
                 @compileError(@typeName(T));
             break;
         }
     }
 }
 
-fn onInitializeRequest(params: *types.InitializeParams) void {
-    std.debug.warn("INIT-REQ\t{}\n", .{params.*});
+fn onInitialize(mem: *std.heap.ArenaAllocator, params: types.InitializeParams) !types.InitializeResult {
+    if (Engine.setup.serverInfo) |*server_info| {
+        if (server_info.name.len == 0) {
+            const args = try std.process.argsAlloc(&mem.allocator);
+            server_info.name = args[0];
+        }
+    }
+    std.debug.warn("\nINIT-REQ\t{}\n\t\t{}\n\n", .{ params, Engine.setup });
+    return Engine.setup;
+}
+
+fn onCancel(mem: *std.heap.ArenaAllocator, params: types.CancelParams) anyerror!void {
+    // TODO
+}
+
+fn onExit(mem: *std.heap.ArenaAllocator) anyerror!void {
+    std.os.exit(0);
 }

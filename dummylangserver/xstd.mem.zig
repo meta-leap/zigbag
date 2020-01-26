@@ -31,8 +31,10 @@ pub inline fn zeroed(comptime T: type) T {
         },
         .Pointer => {
             const type_info = comptime @typeInfo(T);
-            if (type_info.Pointer.size != .Slice)
+            if (type_info.Pointer.size != .Slice) {
+                std.debug.warn("TODO-PTR:\t*{}\n", .{@typeName(type_info.Pointer.child)});
                 unreachable;
+            }
             ret = &[_]type_info.Pointer.child{};
         },
         else => {
