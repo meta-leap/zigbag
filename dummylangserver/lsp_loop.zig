@@ -76,7 +76,7 @@ fn handleFullIncomingJsonPayload(self: *Engine, raw_json_bytes: []const u8) !voi
             if (msg_id) |*id_jsonval| {
                 if (try json.unmarshal(types.IntOrString, &mem_keep, id_jsonval)) |id| {
                     if (msg_name) |jstr| switch (jstr) {
-                        .String => |method_name| try handleIncomingRequestMsg(self, &mem_keep, id, method_name, hashmap.getValue("params")),
+                        .String => |method_name| try handleIncomingMsg(types.RequestIn, self, &mem_keep, id, method_name, hashmap.getValue("params")),
                         else => {},
                     } else
                         handleIncomingResponseMsg(self, &mem_keep, id);
@@ -89,12 +89,23 @@ fn handleFullIncomingJsonPayload(self: *Engine, raw_json_bytes: []const u8) !voi
     }
 }
 
-fn handleIncomingRequestMsg(self: *Engine, mem: *std.heap.ArenaAllocator, id: types.IntOrString, method: []const u8, params: ?std.json.Value) !void {
+fn handleIncomingMsg(comptime T: type, self: *Engine, mem: *std.heap.ArenaAllocator, id: types.IntOrString, method: []const u8, params: ?std.json.Value) !void {
     std.debug.warn("REQ\t{}\t{}\t{}\n", .{ id, method, params });
     const union_member_name = @import("./xstd.mem.zig").replaceScalar(u8, try std.mem.dupe(&mem.allocator, u8, method), "$/", '_');
-    const req = if (params) |*p| try json.unmarshalUnion(types.RequestIn, mem, p, union_member_name) else null;
+    const req = if (params) |*p| try json.unmarshalUnion(T, mem, union_member_name, p) else null;
     std.debug.warn("NAME\t{}\t{}\n", .{ union_member_name, req });
-    if (req) |p| _ = try json.marshal(mem, p);
+    if (req) |uintptr| { // TODO: would like to put in extra `inline fn` but: "unable to evaluate constant expression"
+        comptime var i = @memberCount(T);
+        inline while (i > 0) {
+            i -= 1;
+            if (std.mem.eql(u8, @memberName(T, i), union_member_name)) {
+                const TMember = @memberType(T, i);
+                if (@typeId(TMember) != .Void)
+                    _ = try json.marshal(mem, (@intToPtr(TMember, uintptr)).*);
+                break;
+            }
+        }
+    }
 }
 
 fn handleIncomingResponseMsg(self: *Engine, mem: *std.heap.ArenaAllocator, id: types.IntOrString) void {
