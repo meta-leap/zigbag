@@ -1,43 +1,43 @@
 const std = @import("std");
 
-const types = @import("./lsp_types.zig");
-const json = @import("./lsp_json.zig");
+const lspt = @import("./lsp_types.zig");
+const lspj = @import("./lsp_json.zig");
 
-pub const Engine = struct {
+pub const LangServer = struct {
     input: std.io.InStream(std.os.ReadError),
     output: std.io.OutStream(std.os.WriteError),
     mem_alloc_for_arenas: *std.mem.Allocator,
 
-    handlers_requests: [@memberCount(types.RequestIn)]usize = ([_]usize{0}) ** @memberCount(types.RequestIn),
-    handlers_notifies: [@memberCount(types.NotifyIn)]usize = ([_]usize{0}) ** @memberCount(types.NotifyIn),
+    handlers_requests: [@memberCount(lspt.RequestIn)]usize = ([_]usize{0}) ** @memberCount(lspt.RequestIn),
+    handlers_notifies: [@memberCount(lspt.NotifyIn)]usize = ([_]usize{0}) ** @memberCount(lspt.NotifyIn),
 
-    pub var setup = types.InitializeResult{
-        .serverInfo = .{ .name = "" }, // if empty, will be set to `process.args[0]`
+    pub var setup = lspt.InitializeResult{
         .capabilities = .{},
+        .serverInfo = .{ .name = "" }, // if empty, will be set to `process.args[0]`
     };
 
-    pub fn on(self: *Engine, comptime union_member_of_incoming_request_or_notify: var) void {
-        const T = @TypeOf(union_member_of_incoming_request_or_notify);
-        if (T != types.RequestIn and T != types.NotifyIn)
+    pub fn on(self: *LangServer, comptime handler: var) void {
+        const T = @TypeOf(handler);
+        if (T != lspt.RequestIn and T != lspt.NotifyIn)
             @compileError(@typeName(T));
 
-        const idx = comptime @enumToInt(std.meta.activeTag(union_member_of_incoming_request_or_notify));
-        const fn_ptr = @ptrToInt(@field(union_member_of_incoming_request_or_notify, @memberName(T, idx)));
-        const arr = &(comptime if (T == types.RequestIn) self.handlers_requests else self.handlers_notifies);
+        const idx = comptime @enumToInt(std.meta.activeTag(handler));
+        const fn_ptr = @ptrToInt(@field(handler, @memberName(T, idx)));
+        const arr = &(comptime if (T == lspt.RequestIn) self.handlers_requests else self.handlers_notifies);
         if (arr[idx] != 0 and arr[idx] != fn_ptr)
-            @panic("Engine.on(" ++ @memberName(T, idx) ++ ") already subscribed-to, cannot overwrite existing subscriber");
+            @panic("LangServer.on(" ++ @memberName(T, idx) ++ ") already subscribed-to, cannot overwrite existing subscriber");
         arr[idx] = fn_ptr;
         std.debug.warn("TAG_IDX {}\t{}\t{}\n", .{ @memberName(T, idx), idx, fn_ptr });
     }
 
-    pub fn serve(self: *Engine) !void {
+    pub fn serve(self: *LangServer) !void {
         var mem_buf = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
         defer mem_buf.deinit();
         const buf = &try std.ArrayList(u8).initCapacity(&mem_buf.allocator, 16 * 1024); // initial cap must be big enough to catch the first occurrence of `Content-Length:` header, from there on out `buf` grows to any Content-Length greater than its current-capacity (which is never shrunk)
 
-        _ = self.on(types.RequestIn{ .initialize = onInitialize });
-        _ = self.on(types.NotifyIn{ .__cancelRequest = onCancel });
-        _ = self.on(types.NotifyIn{ .exit = onExit });
+        self.on(lspt.RequestIn{ .initialize = onInitialize });
+        self.on(lspt.NotifyIn{ .__cancelRequest = onCancel });
+        self.on(lspt.NotifyIn{ .exit = onExit });
 
         var got_content_len: ?usize = null;
         var did_full_full_msg = false;
@@ -86,7 +86,7 @@ pub const Engine = struct {
     }
 };
 
-fn handleFullIncomingJsonPayload(self: *Engine, raw_json_bytes: []const u8) !void {
+fn handleFullIncomingJsonPayload(self: *LangServer, raw_json_bytes: []const u8) !void {
     var mem_json = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
     defer mem_json.deinit();
     var mem_keep = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
@@ -99,24 +99,24 @@ fn handleFullIncomingJsonPayload(self: *Engine, raw_json_bytes: []const u8) !voi
             const msg_id = hashmap.getValue("id");
             const msg_name = hashmap.getValue("method");
             if (msg_id) |*id_jsonval| {
-                if (try json.unmarshal(types.IntOrString, &mem_keep, id_jsonval)) |id| {
+                if (try lspj.unmarshal(lspt.IntOrString, &mem_keep, id_jsonval)) |id| {
                     if (msg_name) |jstr| switch (jstr) {
-                        .String => |method_name| try handleIncomingMsg(types.RequestIn, self, &mem_keep, id, method_name, hashmap.getValue("params")),
+                        .String => |method_name| try handleIncomingMsg(lspt.RequestIn, self, &mem_keep, id, method_name, hashmap.getValue("params")),
                         else => {},
                     } else if (hashmap.getValue("error")) |jerr|
                         std.debug.warn("RESP-ERR\t{}\n", .{jerr}) // TODO: ResponseError
                     else
-                        try handleIncomingMsg(types.ResponseIn, self, &mem_keep, id, null, hashmap.getValue("result"));
+                        try handleIncomingMsg(lspt.ResponseIn, self, &mem_keep, id, null, hashmap.getValue("result"));
                 }
             } else if (msg_name) |jstr| switch (jstr) {
-                .String => |method_name| try handleIncomingMsg(types.NotifyIn, self, &mem_keep, null, method_name, hashmap.getValue("params")),
+                .String => |method_name| try handleIncomingMsg(lspt.NotifyIn, self, &mem_keep, null, method_name, hashmap.getValue("params")),
                 else => {},
             };
         },
     }
 }
 
-fn handleIncomingMsg(comptime T: type, self: *Engine, mem: *std.heap.ArenaAllocator, id: ?types.IntOrString, method_name: ?[]const u8, payload: ?std.json.Value) !void {
+fn handleIncomingMsg(comptime T: type, self: *LangServer, mem: *std.heap.ArenaAllocator, id: ?lspt.IntOrString, method_name: ?[]const u8, payload: ?std.json.Value) !void {
     const method = if (method_name) |name| name else "TODO: fetch from dangling response-awaiters";
     const member_name = @import("./xstd.mem.zig").replaceScalar(u8, try std.mem.dupe(&mem.allocator, u8, method), "$/", '_');
 
@@ -124,25 +124,25 @@ fn handleIncomingMsg(comptime T: type, self: *Engine, mem: *std.heap.ArenaAlloca
     inline while (i > 0) {
         i -= 1;
         if (std.mem.eql(u8, @memberName(T, i), member_name)) {
-            if (T == types.NotifyIn or T == types.RequestIn) {
+            if (T == lspt.NotifyIn or T == lspt.RequestIn) {
                 const TMember = @memberType(T, i);
                 const type_fn_info = @typeInfo(TMember).Fn;
                 var fn_ret: ?type_fn_info.return_type.? = null;
-                const fn_ptr = (if (T == types.NotifyIn) self.handlers_notifies else self.handlers_requests)[i];
+                const fn_ptr = (if (T == lspt.NotifyIn) self.handlers_notifies else self.handlers_requests)[i];
                 if (fn_ptr != 0) {
                     const fn_val = @intToPtr(TMember, fn_ptr);
                     fn_ret = if (type_fn_info.args.len == 1)
                         fn_val(mem)
                     else
                         fn_val(mem, if (payload) |*p|
-                            (try json.unmarshal(type_fn_info.args[1].arg_type.?, mem, p)) orelse
+                            (try lspj.unmarshal(type_fn_info.args[1].arg_type.?, mem, p)) orelse
                                 (if (@typeId(type_fn_info.args[1].arg_type.?) == .Optional) null else return)
                         else
                             return);
                 }
                 if (fn_ret) |ret|
                     std.debug.warn("\n{} RET\t{}\n", .{ member_name, ret });
-            } else if (T == types.ResponseIn) {
+            } else if (T == lspt.ResponseIn) {
                 // TODO
             } else
                 @compileError(@typeName(T));
@@ -151,18 +151,18 @@ fn handleIncomingMsg(comptime T: type, self: *Engine, mem: *std.heap.ArenaAlloca
     }
 }
 
-fn onInitialize(mem: *std.heap.ArenaAllocator, params: types.InitializeParams) !types.InitializeResult {
-    if (Engine.setup.serverInfo) |*server_info| {
+fn onInitialize(mem: *std.heap.ArenaAllocator, params: lspt.InitializeParams) !lspt.InitializeResult {
+    std.debug.warn("\nINIT-REQ\t{}\n", .{params});
+    if (LangServer.setup.serverInfo) |*server_info| {
         if (server_info.name.len == 0) {
             const args = try std.process.argsAlloc(&mem.allocator);
             server_info.name = args[0];
         }
     }
-    std.debug.warn("\nINIT-REQ\t{}\n", .{params});
-    return Engine.setup;
+    return LangServer.setup;
 }
 
-fn onCancel(mem: *std.heap.ArenaAllocator, params: types.CancelParams) anyerror!void {
+fn onCancel(mem: *std.heap.ArenaAllocator, params: lspt.CancelParams) anyerror!void {
     // TODO
 }
 
