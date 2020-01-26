@@ -25,17 +25,17 @@ pub const JsonAny = union(enum) {
 };
 
 pub const NotifyIn = union(enum) {
-    __cancelRequest: *CancelParams,
-    initialized: *InitializedParams,
-    exit,
-    workspace_didChangeWorkspaceFolders: *DidChangeWorkspaceFoldersParams,
-    workspace_didChangeConfiguration: *DidChangeConfigurationParams,
-    workspace_didChangeWatchedFiles: *DidChangeWatchedFilesParams,
-    textDocument_didOpen: *DidOpenTextDocumentParams,
-    textDocument_didChange: *DidChangeTextDocumentParams,
-    textDocument_willSave: *WillSaveTextDocumentParams,
-    textDocument_didSave: *DidSaveTextDocumentParams,
-    textDocument_didClose: *DidCloseTextDocumentParams,
+    __cancelRequest: fn (*CancelParams) void,
+    initialized: fn (*InitializedParams) void,
+    exit: fn () void,
+    workspace_didChangeWorkspaceFolders: fn (*DidChangeWorkspaceFoldersParams) void,
+    workspace_didChangeConfiguration: fn (*DidChangeConfigurationParams) void,
+    workspace_didChangeWatchedFiles: fn (*DidChangeWatchedFilesParams) void,
+    textDocument_didOpen: fn (*DidOpenTextDocumentParams) void,
+    textDocument_didChange: fn (*DidChangeTextDocumentParams) void,
+    textDocument_willSave: fn (*WillSaveTextDocumentParams) void,
+    textDocument_didSave: fn (*DidSaveTextDocumentParams) void,
+    textDocument_didClose: fn (*DidCloseTextDocumentParams) void,
 };
 
 pub const NotifyOut = union(enum) {
@@ -47,36 +47,36 @@ pub const NotifyOut = union(enum) {
 };
 
 pub const RequestIn = union(enum) {
-    initialize: *InitializeParams,
-    shutdown,
-    workspace_symbol: *WorkspaceSymbolParams,
-    workspace_executeCommand: *ExecuteCommandParams,
-    textDocument_willSaveWaitUntil: *WillSaveTextDocumentParams,
-    textDocument_completion: *CompletionParams,
-    completionItem_resolve: *CompletionItem,
-    textDocument_hover: *HoverParams,
-    textDocument_signatureHelp: *SignatureHelpParams,
-    textDocument_declaration: *DeclarationParams,
-    textDocument_definition: *DefinitionParams,
-    textDocument_typeDefinition: *TypeDefinitionParams,
-    textDocument_implementation: *ImplementationParams,
-    textDocument_references: *ReferenceParams,
-    textDocument_documentHighlight: *DocumentHighlightParams,
-    textDocument_documentSymbol: *DocumentSymbolParams,
-    textDocument_codeAction: *CodeActionParams,
-    textDocument_codeLens: *CodeLensParams,
-    codeLens_resolve: *CodeLens,
-    textDocument_documentLink: *DocumentLinkParams,
-    documentLink_resolve: *DocumentLink,
-    textDocument_documentColor: *DocumentColorParams,
-    textDocument_colorPresentation: *ColorPresentationParams,
-    textDocument_formatting: *DocumentFormattingParams,
-    textDocument_rangeFormatting: *DocumentRangeFormattingParams,
-    textDocument_onTypeFormatting: *DocumentOnTypeFormattingParams,
-    textDocument_rename: *RenameParams,
-    textDocument_prepareRename: *TextDocumentPositionParams,
-    textDocument_foldingRange: *FoldingRangeParams,
-    textDocument_selectionRange: *SelectionRangeParams,
+    initialize: fn (*InitializeParams) void,
+    shutdown: fn () void,
+    workspace_symbol: fn (*WorkspaceSymbolParams) void,
+    workspace_executeCommand: fn (*ExecuteCommandParams) void,
+    textDocument_willSaveWaitUntil: fn (*WillSaveTextDocumentParams) void,
+    textDocument_completion: fn (*CompletionParams) void,
+    completionItem_resolve: fn (*CompletionItem) void,
+    textDocument_hover: fn (*HoverParams) void,
+    textDocument_signatureHelp: fn (*SignatureHelpParams) void,
+    textDocument_declaration: fn (*DeclarationParams) void,
+    textDocument_definition: fn (*DefinitionParams) void,
+    textDocument_typeDefinition: fn (*TypeDefinitionParams) void,
+    textDocument_implementation: fn (*ImplementationParams) void,
+    textDocument_references: fn (*ReferenceParams) void,
+    textDocument_documentHighlight: fn (*DocumentHighlightParams) void,
+    textDocument_documentSymbol: fn (*DocumentSymbolParams) void,
+    textDocument_codeAction: fn (*CodeActionParams) void,
+    textDocument_codeLens: fn (*CodeLensParams) void,
+    codeLens_resolve: fn (*CodeLens) void,
+    textDocument_documentLink: fn (*DocumentLinkParams) void,
+    documentLink_resolve: fn (*DocumentLink) void,
+    textDocument_documentColor: fn (*DocumentColorParams) void,
+    textDocument_colorPresentation: fn (*ColorPresentationParams) void,
+    textDocument_formatting: fn (*DocumentFormattingParams) void,
+    textDocument_rangeFormatting: fn (*DocumentRangeFormattingParams) void,
+    textDocument_onTypeFormatting: fn (*DocumentOnTypeFormattingParams) void,
+    textDocument_rename: fn (*RenameParams) void,
+    textDocument_prepareRename: fn (*TextDocumentPositionParams) void,
+    textDocument_foldingRange: fn (*FoldingRangeParams) void,
+    textDocument_selectionRange: fn (*SelectionRangeParams) void,
 };
 
 pub const RequestOut = union(enum) {
@@ -90,13 +90,13 @@ pub const RequestOut = union(enum) {
 };
 
 pub const ResponseIn = union(enum) {
-    window_showMessageRequest: ?*MessageActionItem,
-    window_workDoneProgress_create,
-    client_registerCapability,
-    client_unregisterCapability,
-    workspace_workspaceFolders: ?[]WorkspaceFolder,
-    workspace_configuration: []JsonAny,
-    workspace_applyEdit: *ApplyWorkspaceEditResponse,
+    window_showMessageRequest: fn (?*MessageActionItem) void,
+    window_workDoneProgress_create: fn () void,
+    client_registerCapability: fn () void,
+    client_unregisterCapability: fn () void,
+    workspace_workspaceFolders: fn (?[]WorkspaceFolder) void,
+    workspace_configuration: fn ([]JsonAny) void,
+    workspace_applyEdit: fn (*ApplyWorkspaceEditResponse) void,
 };
 
 pub const ResponseOut = union(enum) {
@@ -166,6 +166,7 @@ pub const ResponseError = struct {
         ContentModified = -32801,
     },
     message: String,
+    data: ?JsonAny,
 };
 
 pub const CancelParams = struct {

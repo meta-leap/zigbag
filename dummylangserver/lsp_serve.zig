@@ -6,13 +6,32 @@ const json = @import("./lsp_json.zig");
 pub const Engine = struct {
     input: std.io.InStream(std.os.ReadError),
     output: std.io.OutStream(std.os.WriteError),
-    memAllocForArenas: *std.mem.Allocator,
+    mem_alloc_for_arenas: *std.mem.Allocator,
+
+    handlers_requests: [@memberCount(types.RequestIn)][]usize = ([_][]usize{&[_]usize{}}) ** @memberCount(types.RequestIn),
+    handlers_notifies: [@memberCount(types.NotifyIn)][]usize = ([_][]usize{&[_]usize{}}) ** @memberCount(types.NotifyIn),
+
+    pub fn on(self: *Engine, comptime union_member_of_incoming_request_or_notify: var) void {
+        const T = @TypeOf(union_member_of_incoming_request_or_notify);
+        if (T != types.RequestIn and T != types.NotifyIn)
+            @compileError(@typeName(T));
+        comptime const idx = @enumToInt(std.meta.activeTag(union_member_of_incoming_request_or_notify));
+        const fn_ptr = @ptrToInt(@field(union_member_of_incoming_request_or_notify, @memberName(T, idx)));
+        var slice = if (T == types.RequestIn) self.handlers_requests[idx] else self.handlers_notifies[idx];
+        for (slice) |fn_ptr_have|
+            if (fn_ptr_have == fn_ptr)
+                return;
+
+        (if (T == types.RequestIn) self.handlers_requests else self.handlers_notifies)[idx] = slice;
+        std.debug.warn("TAG_IDX\t{}\t{}\n", .{ idx, fn_ptr });
+    }
 
     pub fn serve(self: *Engine) !void {
-        var mem_buf = std.heap.ArenaAllocator.init(self.memAllocForArenas);
+        var mem_buf = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
         defer mem_buf.deinit();
-
         const buf = &try std.ArrayList(u8).initCapacity(&mem_buf.allocator, 16 * 1024); // initial cap must be big enough to catch the first occurrence of `Content-Length:` header, from there on out `buf` grows to any Content-Length greater than its current-capacity (which is never shrunk)
+
+        self.on(types.RequestIn{ .initialize = onInitializeRequest });
         var got_content_len: ?usize = null;
         var did_full_full_msg = false;
 
@@ -52,7 +71,7 @@ pub const Engine = struct {
                 }
             }
 
-            if (!did_full_full_msg)
+            if (!did_full_full_msg) // might have another full msg in buffer already, no point in reading further for now
                 buf.len += read_more: {
                     const num_bytes = try self.input.read(buf.items[buf.len..]);
                     if (num_bytes > 0) break :read_more num_bytes else return error.EndOfStream;
@@ -62,9 +81,9 @@ pub const Engine = struct {
 };
 
 fn handleFullIncomingJsonPayload(self: *Engine, raw_json_bytes: []const u8) !void {
-    var mem_json = std.heap.ArenaAllocator.init(self.memAllocForArenas);
+    var mem_json = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
     defer mem_json.deinit();
-    var mem_keep = std.heap.ArenaAllocator.init(self.memAllocForArenas);
+    var mem_keep = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
 
     var json_parser = std.json.Parser.init(&mem_json.allocator, true);
     var json_tree = try json_parser.parse(raw_json_bytes);
@@ -78,40 +97,44 @@ fn handleFullIncomingJsonPayload(self: *Engine, raw_json_bytes: []const u8) !voi
                     if (msg_name) |jstr| switch (jstr) {
                         .String => |method_name| try handleIncomingMsg(types.RequestIn, self, &mem_keep, id, method_name, hashmap.getValue("params")),
                         else => {},
-                    } else
-                        handleIncomingResponseMsg(self, &mem_keep, id);
+                    } else if (hashmap.getValue("error")) |jerr|
+                        std.debug.warn("RESP-ERR\t{}\n", .{jerr}) // TODO: ResponseError
+                    else
+                        try handleIncomingMsg(types.ResponseIn, self, &mem_keep, id, null, hashmap.getValue("result"));
                 }
             } else if (msg_name) |jstr| switch (jstr) {
-                .String => |method_name| handleIncomingNotifyMsg(self, &mem_keep, method_name),
+                .String => |method_name| try handleIncomingMsg(types.NotifyIn, self, &mem_keep, null, method_name, hashmap.getValue("params")),
                 else => {},
             };
         },
     }
 }
 
-fn handleIncomingMsg(comptime T: type, self: *Engine, mem: *std.heap.ArenaAllocator, id: types.IntOrString, method: []const u8, params: ?std.json.Value) !void {
-    std.debug.warn("REQ\t{}\t{}\t{}\n", .{ id, method, params });
-    const union_member_name = @import("./xstd.mem.zig").replaceScalar(u8, try std.mem.dupe(&mem.allocator, u8, method), "$/", '_');
-    const req = if (params) |*p| try json.unmarshalUnion(T, mem, union_member_name, p) else null;
-    std.debug.warn("NAME\t{}\t{}\n", .{ union_member_name, req });
-    if (req) |uintptr| { // TODO: would like to put in extra `inline fn` but: "unable to evaluate constant expression"
-        comptime var i = @memberCount(T);
-        inline while (i > 0) {
-            i -= 1;
-            if (std.mem.eql(u8, @memberName(T, i), union_member_name)) {
-                const TMember = @memberType(T, i);
-                if (@typeId(TMember) != .Void)
-                    _ = try json.marshal(mem, (@intToPtr(TMember, uintptr)).*);
-                break;
-            }
+fn handleIncomingMsg(comptime T: type, self: *Engine, mem: *std.heap.ArenaAllocator, id: ?types.IntOrString, method_name: ?[]const u8, payload: ?std.json.Value) !void {
+    const method = if (method_name) |name| name else "TODO: fetch from dangling response-awaiters";
+    const member_name = @import("./xstd.mem.zig").replaceScalar(u8, try std.mem.dupe(&mem.allocator, u8, method), "$/", '_');
+    comptime var i = @memberCount(T);
+    inline while (i > 0) {
+        i -= 1;
+        if (std.mem.eql(u8, @memberName(T, i), member_name)) {
+            if (T == types.NotifyIn) {} else if (T == types.RequestIn) {
+                const type_fn_info = @typeInfo(@memberType(T, i)).Fn;
+                if (type_fn_info.args.len == 0) {
+                    // TODO!
+                } else {
+                    const arg_type = comptime type_fn_info.args[0].arg_type.?;
+                    const arg_ptr: ?arg_type = if (payload) |*p|
+                        try json.unmarshal(type_fn_info.args[0].arg_type.?, mem, p)
+                    else
+                        null;
+                }
+            } else if (T == types.ResponseIn) {} else
+                @compileError(@typeName(T));
+            break;
         }
     }
 }
 
-fn handleIncomingResponseMsg(self: *Engine, mem: *std.heap.ArenaAllocator, id: types.IntOrString) void {
-    std.debug.warn("RESP\t{}\n", .{id});
-}
-
-fn handleIncomingNotifyMsg(self: *Engine, mem: *std.heap.ArenaAllocator, method: []const u8) void {
-    std.debug.warn("SIG\t{}\n", .{method});
+fn onInitializeRequest(params: *types.InitializeParams) void {
+    std.debug.warn("INIT-REQ\t{}\n", .{params.*});
 }

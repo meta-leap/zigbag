@@ -2,25 +2,6 @@ const std = @import("std");
 
 const types = @import("./lsp_types.zig");
 
-pub fn unmarshalUnion(comptime TUnion: type, mem: *std.heap.ArenaAllocator, member_name: []const u8, from: *const std.json.Value) std.mem.Allocator.Error!?usize {
-    if (@typeId(TUnion) != .Union)
-        @compileError("union type expected for 'TUnion'");
-    comptime var i = @memberCount(TUnion);
-    inline while (i > 0) {
-        i -= 1;
-        if (std.mem.eql(u8, @memberName(TUnion, i), member_name)) {
-            const TMember = @memberType(TUnion, i);
-            return if (@typeId(TMember) == .Void)
-                0
-            else if (try unmarshal(TMember, mem, from)) |ptr|
-                @ptrToInt(ptr)
-            else
-                null;
-        }
-    }
-    return null;
-}
-
 pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const std.json.Value) std.mem.Allocator.Error!?T {
     const type_id = comptime @typeId(T);
     const type_info = comptime @typeInfo(T);
