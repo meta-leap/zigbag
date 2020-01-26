@@ -18,10 +18,10 @@ pub const Engine = struct {
 
     pub fn on(self: *Engine, comptime union_member_of_incoming_request_or_notify: var) void {
         const T = @TypeOf(union_member_of_incoming_request_or_notify);
-        comptime if (T != types.RequestIn and T != types.NotifyIn)
+        if (T != types.RequestIn and T != types.NotifyIn)
             @compileError(@typeName(T));
 
-        comptime const idx = @enumToInt(std.meta.activeTag(union_member_of_incoming_request_or_notify));
+        const idx = comptime @enumToInt(std.meta.activeTag(union_member_of_incoming_request_or_notify));
         const fn_ptr = @ptrToInt(@field(union_member_of_incoming_request_or_notify, @memberName(T, idx)));
         const arr = &(comptime if (T == types.RequestIn) self.handlers_requests else self.handlers_notifies);
         if (arr[idx] != 0 and arr[idx] != fn_ptr)
@@ -125,12 +125,23 @@ fn handleIncomingMsg(comptime T: type, self: *Engine, mem: *std.heap.ArenaAlloca
         i -= 1;
         if (std.mem.eql(u8, @memberName(T, i), member_name)) {
             if (T == types.NotifyIn or T == types.RequestIn) {
-                const type_fn_info = @typeInfo(@memberType(T, i)).Fn;
-                const paramless = (type_fn_info.args.len == 1);
-                const param_val = if (paramless) null else (if (payload) |*p|
-                    try json.unmarshal(type_fn_info.args[1].arg_type.?, mem, p)
-                else
-                    null);
+                const TMember = @memberType(T, i);
+                const type_fn_info = @typeInfo(TMember).Fn;
+                var fn_ret: ?type_fn_info.return_type.? = null;
+                const fn_ptr = (if (T == types.NotifyIn) self.handlers_notifies else self.handlers_requests)[i];
+                if (fn_ptr != 0) {
+                    const fn_val = @intToPtr(TMember, fn_ptr);
+                    fn_ret = if (type_fn_info.args.len == 1)
+                        fn_val(mem)
+                    else
+                        fn_val(mem, if (payload) |*p|
+                            (try json.unmarshal(type_fn_info.args[1].arg_type.?, mem, p)) orelse
+                                (if (@typeId(type_fn_info.args[1].arg_type.?) == .Optional) null else return)
+                        else
+                            return);
+                }
+                if (fn_ret) |ret|
+                    std.debug.warn("\n{} RET\t{}\n", .{ member_name, ret });
             } else if (T == types.ResponseIn) {
                 // TODO
             } else
@@ -147,7 +158,7 @@ fn onInitialize(mem: *std.heap.ArenaAllocator, params: types.InitializeParams) !
             server_info.name = args[0];
         }
     }
-    std.debug.warn("\nINIT-REQ\t{}\n\t\t{}\n\n", .{ params, Engine.setup });
+    std.debug.warn("\nINIT-REQ\t{}\n", .{params});
     return Engine.setup;
 }
 
