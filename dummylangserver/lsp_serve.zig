@@ -8,8 +8,8 @@ pub const LangServer = struct {
     output: std.io.OutStream(std.os.WriteError),
     mem_alloc_for_arenas: *std.mem.Allocator,
 
-    handlers_requests: [@memberCount(lspt.RequestIn)]usize = ([_]usize{0}) ** @memberCount(lspt.RequestIn),
-    handlers_notifies: [@memberCount(lspt.NotifyIn)]usize = ([_]usize{0}) ** @memberCount(lspt.NotifyIn),
+    handlers_requests: [@memberCount(lspt.RequestIn)]?usize = ([_]?usize{null}) ** @memberCount(lspt.RequestIn),
+    handlers_notifies: [@memberCount(lspt.NotifyIn)]?usize = ([_]?usize{null}) ** @memberCount(lspt.NotifyIn),
 
     pub var setup = lspt.InitializeResult{
         .capabilities = .{},
@@ -24,7 +24,7 @@ pub const LangServer = struct {
         const idx = comptime @enumToInt(std.meta.activeTag(handler));
         const fn_ptr = @ptrToInt(@field(handler, @memberName(T, idx)));
         const arr = &(comptime if (T == lspt.RequestIn) self.handlers_requests else self.handlers_notifies);
-        if (arr[idx] != 0 and arr[idx] != fn_ptr)
+        if (arr[idx]) |_|
             @panic("LangServer.on(" ++ @memberName(T, idx) ++ ") already subscribed-to, cannot overwrite existing subscriber");
         arr[idx] = fn_ptr;
         std.debug.warn("TAG_IDX {}\t{}\t{}\n", .{ @memberName(T, idx), idx, fn_ptr });
@@ -128,10 +128,9 @@ fn handleIncomingMsg(comptime T: type, self: *LangServer, mem: *std.heap.ArenaAl
                 const TMember = @memberType(T, i);
                 const type_fn_info = @typeInfo(TMember).Fn;
                 var fn_ret: ?type_fn_info.return_type.? = null;
-                const fn_ptr = (if (T == lspt.NotifyIn) self.handlers_notifies else self.handlers_requests)[i];
-                if (fn_ptr != 0) {
+                if ((if (T == lspt.NotifyIn) self.handlers_notifies else self.handlers_requests)[i]) |fn_ptr| {
                     const fn_val = @intToPtr(TMember, fn_ptr);
-                    fn_ret = if (type_fn_info.args.len == 1)
+                    const fn_ret_tmp = if (type_fn_info.args.len == 1)
                         fn_val(mem)
                     else
                         fn_val(mem, if (payload) |*p|
@@ -139,6 +138,9 @@ fn handleIncomingMsg(comptime T: type, self: *LangServer, mem: *std.heap.ArenaAl
                                 (if (@typeId(type_fn_info.args[1].arg_type.?) == .Optional) null else return)
                         else
                             return);
+                    fn_ret = fn_ret_tmp; // TODO: ditch useless intermediate const when "broken LLVM module found" goes away
+                } else if (T == lspt.RequestIn) {
+                    // request not handled by current setup. LSP requires a response for every request with result-or-err. thus send default err response
                 }
                 if (fn_ret) |ret|
                     std.debug.warn("\n{} RET\t{}\n", .{ member_name, ret });
@@ -151,21 +153,30 @@ fn handleIncomingMsg(comptime T: type, self: *LangServer, mem: *std.heap.ArenaAl
     }
 }
 
-fn onInitialize(mem: *std.heap.ArenaAllocator, params: lspt.InitializeParams) !lspt.InitializeResult {
+pub fn fail(code: ?isize, message: ?[]const u8, data: ?lspt.JsonAny) lspt.ResponseError {
+    return lspt.ResponseError{
+        .code = code orelse @enumToInt(lspt.ErrorCodes.InternalError),
+        .message = message orelse "unspecified error",
+        .data = data,
+    };
+}
+
+fn onInitialize(mem: *std.heap.ArenaAllocator, params: lspt.InitializeParams) lspt.Out(lspt.InitializeResult) {
     std.debug.warn("\nINIT-REQ\t{}\n", .{params});
     if (LangServer.setup.serverInfo) |*server_info| {
         if (server_info.name.len == 0) {
-            const args = try std.process.argsAlloc(&mem.allocator);
+            _ = fail(12345, "foo", null);
+            const args = std.process.argsAlloc(&mem.allocator) catch return .{ .failed = fail(null, null, null) };
             server_info.name = args[0];
         }
     }
-    return LangServer.setup;
+    return .{ .result = LangServer.setup };
 }
 
-fn onCancel(mem: *std.heap.ArenaAllocator, params: lspt.CancelParams) anyerror!void {
+fn onCancel(mem: *std.heap.ArenaAllocator, params: lspt.CancelParams) void {
     // TODO
 }
 
-fn onExit(mem: *std.heap.ArenaAllocator) anyerror!void {
+fn onExit(mem: *std.heap.ArenaAllocator) void {
     std.os.exit(0);
 }

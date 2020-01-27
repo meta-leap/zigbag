@@ -2,6 +2,55 @@ const std = @import("std");
 
 pub const String = []const u8;
 
+pub fn In(comptime T: type) type {
+    return struct {
+        params: T,
+        mem: *std.heap.ArenaAllocator,
+    };
+}
+
+pub fn Out(comptime T: type) type {
+    return union {
+        result: T,
+        failed: ResponseError,
+    };
+}
+
+pub const ErrorCodes = enum(isize) {
+    /// defined by LSP
+    RequestCancelled = -32800,
+
+    /// defined by LSP
+    ContentModified = -32801,
+
+    /// defined by JSON-RPC
+    ParseError = -32700,
+
+    /// defined by JSON-RPC
+    InvalidRequest = -32600,
+
+    /// defined by JSON-RPC
+    MethodNotFound = -32601,
+
+    /// defined by JSON-RPC
+    InvalidParams = -32602,
+
+    /// defined by JSON-RPC
+    InternalError = -32603,
+
+    /// defined by JSON-RPC
+    serverErrorStart = -32099,
+
+    /// defined by JSON-RPC
+    serverErrorEnd = -32000,
+
+    /// defined by JSON-RPC
+    ServerNotInitialized = -32002,
+
+    /// defined by JSON-RPC
+    UnknownErrorCode = -32001,
+};
+
 pub const IntOrString = union(enum) {
     int: isize,
     string: String,
@@ -25,17 +74,17 @@ pub const JsonAny = union(enum) {
 };
 
 pub const NotifyIn = union(enum) {
-    __cancelRequest: fn (*std.heap.ArenaAllocator, CancelParams) anyerror!void,
-    initialized: fn (*std.heap.ArenaAllocator, InitializedParams) anyerror!void,
-    exit: fn (*std.heap.ArenaAllocator) anyerror!void,
-    workspace_didChangeWorkspaceFolders: fn (*std.heap.ArenaAllocator, DidChangeWorkspaceFoldersParams) anyerror!void,
-    workspace_didChangeConfiguration: fn (*std.heap.ArenaAllocator, DidChangeConfigurationParams) anyerror!void,
-    workspace_didChangeWatchedFiles: fn (*std.heap.ArenaAllocator, DidChangeWatchedFilesParams) anyerror!void,
-    textDocument_didOpen: fn (*std.heap.ArenaAllocator, DidOpenTextDocumentParams) anyerror!void,
-    textDocument_didChange: fn (*std.heap.ArenaAllocator, DidChangeTextDocumentParams) anyerror!void,
-    textDocument_willSave: fn (*std.heap.ArenaAllocator, WillSaveTextDocumentParams) anyerror!void,
-    textDocument_didSave: fn (*std.heap.ArenaAllocator, DidSaveTextDocumentParams) anyerror!void,
-    textDocument_didClose: fn (*std.heap.ArenaAllocator, DidCloseTextDocumentParams) anyerror!void,
+    __cancelRequest: fn (*std.heap.ArenaAllocator, CancelParams) void,
+    initialized: fn (*std.heap.ArenaAllocator, InitializedParams) void,
+    exit: fn (*std.heap.ArenaAllocator) void,
+    workspace_didChangeWorkspaceFolders: fn (*std.heap.ArenaAllocator, DidChangeWorkspaceFoldersParams) void,
+    workspace_didChangeConfiguration: fn (*std.heap.ArenaAllocator, DidChangeConfigurationParams) void,
+    workspace_didChangeWatchedFiles: fn (*std.heap.ArenaAllocator, DidChangeWatchedFilesParams) void,
+    textDocument_didOpen: fn (*std.heap.ArenaAllocator, DidOpenTextDocumentParams) void,
+    textDocument_didChange: fn (*std.heap.ArenaAllocator, DidChangeTextDocumentParams) void,
+    textDocument_willSave: fn (*std.heap.ArenaAllocator, WillSaveTextDocumentParams) void,
+    textDocument_didSave: fn (*std.heap.ArenaAllocator, DidSaveTextDocumentParams) void,
+    textDocument_didClose: fn (*std.heap.ArenaAllocator, DidCloseTextDocumentParams) void,
 };
 
 pub const NotifyOut = union(enum) {
@@ -47,54 +96,54 @@ pub const NotifyOut = union(enum) {
 };
 
 pub const RequestIn = union(enum) {
-    initialize: fn (*std.heap.ArenaAllocator, InitializeParams) anyerror!InitializeResult,
-    shutdown: fn (*std.heap.ArenaAllocator) anyerror!void,
-    workspace_symbol: fn (*std.heap.ArenaAllocator, WorkspaceSymbolParams) anyerror!?[]SymbolInformation,
-    workspace_executeCommand: fn (*std.heap.ArenaAllocator, ExecuteCommandParams) anyerror!?JsonAny,
-    textDocument_willSaveWaitUntil: fn (*std.heap.ArenaAllocator, WillSaveTextDocumentParams) anyerror!?[]TextEdit,
-    textDocument_completion: fn (*std.heap.ArenaAllocator, CompletionParams) anyerror!?CompletionList,
-    completionItem_resolve: fn (*std.heap.ArenaAllocator, CompletionItem) anyerror!CompletionItem,
-    textDocument_hover: fn (*std.heap.ArenaAllocator, HoverParams) anyerror!?Hover,
-    textDocument_signatureHelp: fn (*std.heap.ArenaAllocator, SignatureHelpParams) anyerror!?SignatureHelp,
-    textDocument_declaration: fn (*std.heap.ArenaAllocator, DeclarationParams) anyerror!?union {
+    initialize: fn (*std.heap.ArenaAllocator, InitializeParams) Out(InitializeResult),
+    shutdown: fn (*std.heap.ArenaAllocator) void,
+    workspace_symbol: fn (*std.heap.ArenaAllocator, WorkspaceSymbolParams) ?[]SymbolInformation,
+    workspace_executeCommand: fn (*std.heap.ArenaAllocator, ExecuteCommandParams) ?JsonAny,
+    textDocument_willSaveWaitUntil: fn (*std.heap.ArenaAllocator, WillSaveTextDocumentParams) ?[]TextEdit,
+    textDocument_completion: fn (*std.heap.ArenaAllocator, CompletionParams) ?CompletionList,
+    completionItem_resolve: fn (*std.heap.ArenaAllocator, CompletionItem) CompletionItem,
+    textDocument_hover: fn (*std.heap.ArenaAllocator, HoverParams) ?Hover,
+    textDocument_signatureHelp: fn (*std.heap.ArenaAllocator, SignatureHelpParams) ?SignatureHelp,
+    textDocument_declaration: fn (*std.heap.ArenaAllocator, DeclarationParams) ?union {
         locations: []Location,
         links: []LocationLink,
     },
-    textDocument_definition: fn (*std.heap.ArenaAllocator, DefinitionParams) anyerror!?union {
+    textDocument_definition: fn (*std.heap.ArenaAllocator, DefinitionParams) ?union {
         locations: []Location,
         links: []LocationLink,
     },
-    textDocument_typeDefinition: fn (*std.heap.ArenaAllocator, TypeDefinitionParams) anyerror!?union {
+    textDocument_typeDefinition: fn (*std.heap.ArenaAllocator, TypeDefinitionParams) ?union {
         locations: []Location,
         links: []LocationLink,
     },
-    textDocument_implementation: fn (*std.heap.ArenaAllocator, ImplementationParams) anyerror!?union {
+    textDocument_implementation: fn (*std.heap.ArenaAllocator, ImplementationParams) ?union {
         locations: []Location,
         links: []LocationLink,
     },
-    textDocument_references: fn (*std.heap.ArenaAllocator, ReferenceParams) anyerror!?[]Location,
-    textDocument_documentHighlight: fn (*std.heap.ArenaAllocator, DocumentHighlightParams) anyerror!?[]DocumentHighlight,
-    textDocument_documentSymbol: fn (*std.heap.ArenaAllocator, DocumentSymbolParams) anyerror!?union {
+    textDocument_references: fn (*std.heap.ArenaAllocator, ReferenceParams) ?[]Location,
+    textDocument_documentHighlight: fn (*std.heap.ArenaAllocator, DocumentHighlightParams) ?[]DocumentHighlight,
+    textDocument_documentSymbol: fn (*std.heap.ArenaAllocator, DocumentSymbolParams) ?union {
         flat: []SymbolInformation,
         hierarchy: []DocumentSymbol,
     },
-    textDocument_codeAction: fn (*std.heap.ArenaAllocator, CodeActionParams) anyerror!?[]union {
+    textDocument_codeAction: fn (*std.heap.ArenaAllocator, CodeActionParams) ?[]union {
         code_action: CodeAction,
         command: Command,
     },
-    textDocument_codeLens: fn (*std.heap.ArenaAllocator, CodeLensParams) anyerror!?[]CodeLens,
-    codeLens_resolve: fn (*std.heap.ArenaAllocator, CodeLens) anyerror!CodeLens,
-    textDocument_documentLink: fn (*std.heap.ArenaAllocator, DocumentLinkParams) anyerror!?[]DocumentLink,
-    documentLink_resolve: fn (*std.heap.ArenaAllocator, DocumentLink) anyerror!DocumentLink,
-    textDocument_documentColor: fn (*std.heap.ArenaAllocator, DocumentColorParams) anyerror![]ColorInformation,
-    textDocument_colorPresentation: fn (*std.heap.ArenaAllocator, ColorPresentationParams) anyerror![]ColorPresentation,
-    textDocument_formatting: fn (*std.heap.ArenaAllocator, DocumentFormattingParams) anyerror!?[]TextEdit,
-    textDocument_rangeFormatting: fn (*std.heap.ArenaAllocator, DocumentRangeFormattingParams) anyerror!?[]TextEdit,
-    textDocument_onTypeFormatting: fn (*std.heap.ArenaAllocator, DocumentOnTypeFormattingParams) anyerror!?[]TextEdit,
-    textDocument_rename: fn (*std.heap.ArenaAllocator, RenameParams) anyerror!?[]WorkspaceEdit,
-    textDocument_prepareRename: fn (*std.heap.ArenaAllocator, TextDocumentPositionParams) anyerror!?Range,
-    textDocument_foldingRange: fn (*std.heap.ArenaAllocator, FoldingRangeParams) anyerror!?[]FoldingRange,
-    textDocument_selectionRange: fn (*std.heap.ArenaAllocator, SelectionRangeParams) anyerror!?[]SelectionRange,
+    textDocument_codeLens: fn (*std.heap.ArenaAllocator, CodeLensParams) ?[]CodeLens,
+    codeLens_resolve: fn (*std.heap.ArenaAllocator, CodeLens) CodeLens,
+    textDocument_documentLink: fn (*std.heap.ArenaAllocator, DocumentLinkParams) ?[]DocumentLink,
+    documentLink_resolve: fn (*std.heap.ArenaAllocator, DocumentLink) DocumentLink,
+    textDocument_documentColor: fn (*std.heap.ArenaAllocator, DocumentColorParams) []ColorInformation,
+    textDocument_colorPresentation: fn (*std.heap.ArenaAllocator, ColorPresentationParams) []ColorPresentation,
+    textDocument_formatting: fn (*std.heap.ArenaAllocator, DocumentFormattingParams) ?[]TextEdit,
+    textDocument_rangeFormatting: fn (*std.heap.ArenaAllocator, DocumentRangeFormattingParams) ?[]TextEdit,
+    textDocument_onTypeFormatting: fn (*std.heap.ArenaAllocator, DocumentOnTypeFormattingParams) ?[]TextEdit,
+    textDocument_rename: fn (*std.heap.ArenaAllocator, RenameParams) ?[]WorkspaceEdit,
+    textDocument_prepareRename: fn (*std.heap.ArenaAllocator, TextDocumentPositionParams) ?Range,
+    textDocument_foldingRange: fn (*std.heap.ArenaAllocator, FoldingRangeParams) ?[]FoldingRange,
+    textDocument_selectionRange: fn (*std.heap.ArenaAllocator, SelectionRangeParams) ?[]SelectionRange,
 };
 
 pub const RequestOut = union(enum) {
@@ -169,20 +218,8 @@ pub const ResponseOut = union(enum) {
 };
 
 pub const ResponseError = struct {
-    code: enum {
-        ParseError = -32700,
-        InvalidRequest = -32600,
-        MethodNotFound = -32601,
-        InvalidParams = -32602,
-        InternalError = -32603,
-        ServerErrorStart = -32099,
-        ServerErrorEnd = -32000,
-        ServerNotInitialized = -32002,
-        UnknownErrorCode = -32001,
-
-        RequestCancelled = -32800,
-        ContentModified = -32801,
-    },
+    /// see `ErrorCodes` enumeration
+    code: isize,
     message: String,
     data: ?JsonAny,
 };
