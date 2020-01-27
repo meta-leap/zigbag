@@ -146,7 +146,7 @@ fn handleIncomingMsg(comptime T: type, self: *LangServer, mem: *std.heap.ArenaAl
                             (if (@typeId(fn_arg_param_type) == .Optional) null else return);
 
                     fn_ret = fn_ref(fn_arg);
-                    if (T == RequestIn and @memberType(fn_info.return_type.?, 0) != void)
+                    if (T == RequestIn)
                         sendRaw(mem, self, lspj.marshal(mem, fn_ret.?.toJsonRpcResponse(id.?))) catch unreachable;
                 } else if (T == RequestIn) {
                     // request not handled by current setup. LSP requires a response for every request with result-or-err. thus send default err response
