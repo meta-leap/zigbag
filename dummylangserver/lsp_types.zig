@@ -10,7 +10,7 @@ pub fn In(comptime T: type) type {
 }
 
 pub fn Out(comptime T: type) type {
-    return union {
+    return union(enum) {
         ok: T,
         err: ResponseError,
     };
@@ -98,52 +98,52 @@ pub const NotifyOut = union(enum) {
 pub const RequestIn = union(enum) {
     initialize: fn (In(InitializeParams)) Out(InitializeResult),
     shutdown: fn (In(void)) Out(void),
-    workspace_symbol: fn (In(WorkspaceSymbolParams)) ?[]SymbolInformation,
-    workspace_executeCommand: fn (In(ExecuteCommandParams)) ?JsonAny,
-    textDocument_willSaveWaitUntil: fn (In(WillSaveTextDocumentParams)) ?[]TextEdit,
-    textDocument_completion: fn (In(CompletionParams)) ?CompletionList,
-    completionItem_resolve: fn (In(CompletionItem)) CompletionItem,
-    textDocument_hover: fn (In(HoverParams)) ?Hover,
-    textDocument_signatureHelp: fn (In(SignatureHelpParams)) ?SignatureHelp,
-    textDocument_declaration: fn (In(DeclarationParams)) ?union {
+    workspace_symbol: fn (In(WorkspaceSymbolParams)) Out(?[]SymbolInformation),
+    workspace_executeCommand: fn (In(ExecuteCommandParams)) Out(?JsonAny),
+    textDocument_willSaveWaitUntil: fn (In(WillSaveTextDocumentParams)) Out(?[]TextEdit),
+    textDocument_completion: fn (In(CompletionParams)) Out(?CompletionList),
+    completionItem_resolve: fn (In(CompletionItem)) Out(CompletionItem),
+    textDocument_hover: fn (In(HoverParams)) Out(?Hover),
+    textDocument_signatureHelp: fn (In(SignatureHelpParams)) Out(?SignatureHelp),
+    textDocument_declaration: fn (In(DeclarationParams)) Out(?union(enum) {
         locations: []Location,
         links: []LocationLink,
-    },
-    textDocument_definition: fn (In(DefinitionParams)) ?union {
+    }),
+    textDocument_definition: fn (In(DefinitionParams)) Out(?union(enum) {
         locations: []Location,
         links: []LocationLink,
-    },
-    textDocument_typeDefinition: fn (In(TypeDefinitionParams)) ?union {
+    }),
+    textDocument_typeDefinition: fn (In(TypeDefinitionParams)) Out(?union(enum) {
         locations: []Location,
         links: []LocationLink,
-    },
-    textDocument_implementation: fn (In(ImplementationParams)) ?union {
+    }),
+    textDocument_implementation: fn (In(ImplementationParams)) Out(?union(enum) {
         locations: []Location,
         links: []LocationLink,
-    },
-    textDocument_references: fn (In(ReferenceParams)) ?[]Location,
-    textDocument_documentHighlight: fn (In(DocumentHighlightParams)) ?[]DocumentHighlight,
-    textDocument_documentSymbol: fn (In(DocumentSymbolParams)) ?union {
+    }),
+    textDocument_references: fn (In(ReferenceParams)) Out(?[]Location),
+    textDocument_documentHighlight: fn (In(DocumentHighlightParams)) Out(?[]DocumentHighlight),
+    textDocument_documentSymbol: fn (In(DocumentSymbolParams)) Out(?union(enum) {
         flat: []SymbolInformation,
         hierarchy: []DocumentSymbol,
-    },
-    textDocument_codeAction: fn (In(CodeActionParams)) ?[]union {
+    }),
+    textDocument_codeAction: fn (In(CodeActionParams)) Out(?[]union(enum) {
         code_action: CodeAction,
         command: Command,
-    },
-    textDocument_codeLens: fn (In(CodeLensParams)) ?[]CodeLens,
-    codeLens_resolve: fn (In(CodeLens)) CodeLens,
-    textDocument_documentLink: fn (In(DocumentLinkParams)) ?[]DocumentLink,
-    documentLink_resolve: fn (In(DocumentLink)) DocumentLink,
-    textDocument_documentColor: fn (In(DocumentColorParams)) []ColorInformation,
-    textDocument_colorPresentation: fn (In(ColorPresentationParams)) []ColorPresentation,
-    textDocument_formatting: fn (In(DocumentFormattingParams)) ?[]TextEdit,
-    textDocument_rangeFormatting: fn (In(DocumentRangeFormattingParams)) ?[]TextEdit,
-    textDocument_onTypeFormatting: fn (In(DocumentOnTypeFormattingParams)) ?[]TextEdit,
-    textDocument_rename: fn (In(RenameParams)) ?[]WorkspaceEdit,
-    textDocument_prepareRename: fn (In(TextDocumentPositionParams)) ?Range,
-    textDocument_foldingRange: fn (In(FoldingRangeParams)) ?[]FoldingRange,
-    textDocument_selectionRange: fn (In(SelectionRangeParams)) ?[]SelectionRange,
+    }),
+    textDocument_codeLens: fn (In(CodeLensParams)) Out(?[]CodeLens),
+    codeLens_resolve: fn (In(CodeLens)) Out(CodeLens),
+    textDocument_documentLink: fn (In(DocumentLinkParams)) Out(?[]DocumentLink),
+    documentLink_resolve: fn (In(DocumentLink)) Out(DocumentLink),
+    textDocument_documentColor: fn (In(DocumentColorParams)) Out([]ColorInformation),
+    textDocument_colorPresentation: fn (In(ColorPresentationParams)) Out([]ColorPresentation),
+    textDocument_formatting: fn (In(DocumentFormattingParams)) Out(?[]TextEdit),
+    textDocument_rangeFormatting: fn (In(DocumentRangeFormattingParams)) Out(?[]TextEdit),
+    textDocument_onTypeFormatting: fn (In(DocumentOnTypeFormattingParams)) Out(?[]TextEdit),
+    textDocument_rename: fn (In(RenameParams)) Out(?[]WorkspaceEdit),
+    textDocument_prepareRename: fn (In(TextDocumentPositionParams)) Out(?Range),
+    textDocument_foldingRange: fn (In(FoldingRangeParams)) Out(?[]FoldingRange),
+    textDocument_selectionRange: fn (In(SelectionRangeParams)) Out(?[]SelectionRange),
 };
 
 pub const RequestOut = union(enum) {
@@ -176,29 +176,29 @@ pub const ResponseOut = union(enum) {
     completionItem_resolve: *CompletionItem,
     textDocument_hover: ?*Hover,
     textDocument_signatureHelp: ?*SignatureHelp,
-    textDocument_declaration: ?union {
+    textDocument_declaration: ?union(enum) {
         locations: []Location,
         links: []LocationLink,
     },
-    textDocument_definition: ?union {
+    textDocument_definition: ?union(enum) {
         locations: []Location,
         links: []LocationLink,
     },
-    textDocument_typeDefinition: ?union {
+    textDocument_typeDefinition: ?union(enum) {
         locations: []Location,
         links: []LocationLink,
     },
-    textDocument_implementation: ?union {
+    textDocument_implementation: ?union(enum) {
         locations: []Location,
         links: []LocationLink,
     },
     textDocument_references: ?[]Location,
     textDocument_documentHighlight: ?[]DocumentHighlight,
-    textDocument_documentSymbol: ?union {
+    textDocument_documentSymbol: ?union(enum) {
         flat: []SymbolInformation,
         hierarchy: []DocumentSymbol,
     },
-    textDocument_codeAction: ?[]union {
+    textDocument_codeAction: ?[]union(enum) {
         code_action: CodeAction,
         command: Command,
     },
@@ -311,7 +311,7 @@ pub const TextDocumentIdentifier = struct {
 
 pub const WorkspaceEdit = struct {
     changes: ?std.StringHashMap([]TextEdit), // ?std.AutoHashMap(DocumentUri, []TextEdit),
-    documentChanges: ?[]union {
+    documentChanges: ?[]union(enum) {
         edit: TextDocumentEdit,
         file_create: struct {
             kind: String = "create",
