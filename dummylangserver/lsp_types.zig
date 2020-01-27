@@ -13,6 +13,22 @@ pub fn Out(comptime T: type) type {
     return union(enum) {
         ok: T,
         err: ResponseError,
+
+        fn toJsonRpcResponse(self: @This(), id: IntOrString) ?union(enum) {
+            with_result: struct {
+                id: IntOrString,
+                result: T,
+            },
+            with_error: struct {
+                id: IntOrString,
+                error__: ResponseError,
+            },
+        } {
+            return switch (self) {
+                .ok => |it| .{ .with_result = .{ .id = id, .result = it } },
+                .err => |e| .{ .with_error = .{ .id = id, .error__ = e } },
+            };
+        }
     };
 }
 

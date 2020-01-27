@@ -4,9 +4,10 @@ usingnamespace @import("./lsp_types.zig");
 const lspj = @import("./lsp_json.zig");
 
 pub const LangServer = struct {
-    input: std.io.InStream(std.os.ReadError),
-    output: std.io.OutStream(std.os.WriteError),
+    input: *std.io.InStream(std.os.ReadError),
+    output: *std.io.OutStream(std.os.WriteError),
     mem_alloc_for_arenas: *std.mem.Allocator,
+    dbgprint_all_outgoings: bool = true,
 
     handlers_requests: [@memberCount(RequestIn)]?usize = ([_]?usize{null}) ** @memberCount(RequestIn),
     handlers_notifies: [@memberCount(NotifyIn)]?usize = ([_]?usize{null}) ** @memberCount(NotifyIn),
@@ -27,7 +28,6 @@ pub const LangServer = struct {
         if (arr[idx]) |_|
             @panic("LangServer.on(" ++ @memberName(T, idx) ++ ") already subscribed-to, cannot overwrite existing subscriber");
         arr[idx] = fn_ptr;
-        std.debug.warn("TAG_IDX {}\t{}\t{}\n", .{ @memberName(T, idx), idx, fn_ptr });
     }
 
     pub fn serve(self: *LangServer) !void {
@@ -60,7 +60,9 @@ pub const LangServer = struct {
                     };
 
             if (got_content_len) |content_len| {
+                std.debug.warn("got_content_len:\t{}\n", .{content_len});
                 if (std.mem.indexOf(u8, so_far, "\r\n\r\n")) |idx| {
+                    std.debug.warn("got_sep:\t{}\n", .{idx});
                     const got = buf.items[idx + 4 .. buf.len];
                     std.mem.copy(u8, buf.items[0..got.len], got);
                     buf.len = got.len;
@@ -94,6 +96,7 @@ fn handleFullIncomingJsonPayload(self: *LangServer, raw_json_bytes: []const u8) 
     var mem_json = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
     defer mem_json.deinit();
     var mem_keep = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
+    defer mem_keep.deinit(); // TODO: move this to proper place when moving to threaded-queuing
 
     var json_parser = std.json.Parser.init(&mem_json.allocator, true);
     var json_tree = json_parser.parse(raw_json_bytes) catch return;
@@ -145,8 +148,8 @@ fn handleIncomingMsg(comptime T: type, self: *LangServer, mem: *std.heap.ArenaAl
                             (if (@typeId(fn_arg_param_type) == .Optional) null else return);
 
                     fn_ret = fn_ref(fn_arg);
-                    if ((if (T == NotifyIn) fn_info.return_type.? else @memberType(fn_info.return_type.?, 0)) != void)
-                        _ = lspj.marshal(mem, fn_ret.?.ok);
+                    if (T == RequestIn and @memberType(fn_info.return_type.?, 0) != void)
+                        sendRaw(mem, self, lspj.marshal(mem, fn_ret.?.toJsonRpcResponse(id.?))) catch unreachable;
                 } else if (T == RequestIn) {
                     // request not handled by current setup. LSP requires a response for every request with result-or-err. thus send default err response
                 }
@@ -159,9 +162,20 @@ fn handleIncomingMsg(comptime T: type, self: *LangServer, mem: *std.heap.ArenaAl
             return;
         }
     }
+    if (T == RequestIn) {
+        const err = Out(void){ .err = fail(@enumToInt(ErrorCodes.MethodNotFound), method, null) };
+        sendRaw(mem, self, lspj.marshal(mem, err.toJsonRpcResponse(id.?))) catch {};
+    }
+}
 
-    if (T == RequestIn)
-        if (id) |req_id| {};
+fn sendRaw(mem: *std.heap.ArenaAllocator, self: *LangServer, json_value: std.json.Value) !void {
+    var buf: [1024 * 1024]u8 = undefined;
+    var stream = std.io.SliceOutStream.init(&buf);
+    try json_value.dumpStream(&stream.stream, 1024);
+    const str = stream.getWritten();
+    if (self.dbgprint_all_outgoings)
+        std.debug.warn("\n\n>>>>>>>>>>>Content-Length: {d}\r\n\r\n{s}<<<<<<<<<<<\n\n", .{ str.len, str });
+    self.output.print("Content-Length: {d}\r\n\r\n{s}", .{ str.len, str }) catch unreachable;
 }
 
 pub fn fail(code: ?isize, message: ?[]const u8, data: ?JsonAny) ResponseError {

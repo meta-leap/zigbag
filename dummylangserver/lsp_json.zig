@@ -137,7 +137,7 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var) std.json.Value {
         return std.json.Value{ .Integer = @intCast(i64, from) }
     else if (type_id == .Float or type_id == .ComptimeFloat)
         return std.json.Value{ .Float = from }
-    else if (type_id == .Null)
+    else if (type_id == .Null or type_id == .Void)
         return std.json.Value{ .Null = .{} }
     else if (type_id == .Enum)
         return std.json.Value{ .Integer = @enumToInt(from) }
@@ -164,7 +164,7 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var) std.json.Value {
                     while (obj.next()) |item|
                         _ = ret.Object.put(item.key, item.value) catch unreachable;
                 } else if (!field_is_null) {
-                    _ = ret.Object.put(field_name, marshal(mem, field_value)) catch unreachable;
+                    _ = ret.Object.put(comptime std.mem.trimRight(u8, field_name, "_"), marshal(mem, field_value)) catch unreachable;
                 }
             }
             return ret;
