@@ -4,8 +4,8 @@ pub const String = []const u8;
 
 pub fn In(comptime T: type) type {
     return struct {
-        params: T,
-        mem: *std.heap.ArenaAllocator,
+        it: T,
+        mem: *std.mem.Allocator,
     };
 }
 
@@ -74,17 +74,17 @@ pub const JsonAny = union(enum) {
 };
 
 pub const NotifyIn = union(enum) {
-    __cancelRequest: fn (*std.heap.ArenaAllocator, CancelParams) void,
-    initialized: fn (*std.heap.ArenaAllocator, InitializedParams) void,
-    exit: fn (*std.heap.ArenaAllocator) void,
-    workspace_didChangeWorkspaceFolders: fn (*std.heap.ArenaAllocator, DidChangeWorkspaceFoldersParams) void,
-    workspace_didChangeConfiguration: fn (*std.heap.ArenaAllocator, DidChangeConfigurationParams) void,
-    workspace_didChangeWatchedFiles: fn (*std.heap.ArenaAllocator, DidChangeWatchedFilesParams) void,
-    textDocument_didOpen: fn (*std.heap.ArenaAllocator, DidOpenTextDocumentParams) void,
-    textDocument_didChange: fn (*std.heap.ArenaAllocator, DidChangeTextDocumentParams) void,
-    textDocument_willSave: fn (*std.heap.ArenaAllocator, WillSaveTextDocumentParams) void,
-    textDocument_didSave: fn (*std.heap.ArenaAllocator, DidSaveTextDocumentParams) void,
-    textDocument_didClose: fn (*std.heap.ArenaAllocator, DidCloseTextDocumentParams) void,
+    __cancelRequest: fn (In(CancelParams)) void,
+    initialized: fn (In(InitializedParams)) void,
+    exit: fn (In(void)) void,
+    workspace_didChangeWorkspaceFolders: fn (In(DidChangeWorkspaceFoldersParams)) void,
+    workspace_didChangeConfiguration: fn (In(DidChangeConfigurationParams)) void,
+    workspace_didChangeWatchedFiles: fn (In(DidChangeWatchedFilesParams)) void,
+    textDocument_didOpen: fn (In(DidOpenTextDocumentParams)) void,
+    textDocument_didChange: fn (In(DidChangeTextDocumentParams)) void,
+    textDocument_willSave: fn (In(WillSaveTextDocumentParams)) void,
+    textDocument_didSave: fn (In(DidSaveTextDocumentParams)) void,
+    textDocument_didClose: fn (In(DidCloseTextDocumentParams)) void,
 };
 
 pub const NotifyOut = union(enum) {
@@ -96,54 +96,54 @@ pub const NotifyOut = union(enum) {
 };
 
 pub const RequestIn = union(enum) {
-    initialize: fn (*std.heap.ArenaAllocator, InitializeParams) Out(InitializeResult),
-    shutdown: fn (*std.heap.ArenaAllocator) void,
-    workspace_symbol: fn (*std.heap.ArenaAllocator, WorkspaceSymbolParams) ?[]SymbolInformation,
-    workspace_executeCommand: fn (*std.heap.ArenaAllocator, ExecuteCommandParams) ?JsonAny,
-    textDocument_willSaveWaitUntil: fn (*std.heap.ArenaAllocator, WillSaveTextDocumentParams) ?[]TextEdit,
-    textDocument_completion: fn (*std.heap.ArenaAllocator, CompletionParams) ?CompletionList,
-    completionItem_resolve: fn (*std.heap.ArenaAllocator, CompletionItem) CompletionItem,
-    textDocument_hover: fn (*std.heap.ArenaAllocator, HoverParams) ?Hover,
-    textDocument_signatureHelp: fn (*std.heap.ArenaAllocator, SignatureHelpParams) ?SignatureHelp,
-    textDocument_declaration: fn (*std.heap.ArenaAllocator, DeclarationParams) ?union {
+    initialize: fn (In(InitializeParams)) Out(InitializeResult),
+    shutdown: fn (In(void)) void,
+    workspace_symbol: fn (In(WorkspaceSymbolParams)) ?[]SymbolInformation,
+    workspace_executeCommand: fn (In(ExecuteCommandParams)) ?JsonAny,
+    textDocument_willSaveWaitUntil: fn (In(WillSaveTextDocumentParams)) ?[]TextEdit,
+    textDocument_completion: fn (In(CompletionParams)) ?CompletionList,
+    completionItem_resolve: fn (In(CompletionItem)) CompletionItem,
+    textDocument_hover: fn (In(HoverParams)) ?Hover,
+    textDocument_signatureHelp: fn (In(SignatureHelpParams)) ?SignatureHelp,
+    textDocument_declaration: fn (In(DeclarationParams)) ?union {
         locations: []Location,
         links: []LocationLink,
     },
-    textDocument_definition: fn (*std.heap.ArenaAllocator, DefinitionParams) ?union {
+    textDocument_definition: fn (In(DefinitionParams)) ?union {
         locations: []Location,
         links: []LocationLink,
     },
-    textDocument_typeDefinition: fn (*std.heap.ArenaAllocator, TypeDefinitionParams) ?union {
+    textDocument_typeDefinition: fn (In(TypeDefinitionParams)) ?union {
         locations: []Location,
         links: []LocationLink,
     },
-    textDocument_implementation: fn (*std.heap.ArenaAllocator, ImplementationParams) ?union {
+    textDocument_implementation: fn (In(ImplementationParams)) ?union {
         locations: []Location,
         links: []LocationLink,
     },
-    textDocument_references: fn (*std.heap.ArenaAllocator, ReferenceParams) ?[]Location,
-    textDocument_documentHighlight: fn (*std.heap.ArenaAllocator, DocumentHighlightParams) ?[]DocumentHighlight,
-    textDocument_documentSymbol: fn (*std.heap.ArenaAllocator, DocumentSymbolParams) ?union {
+    textDocument_references: fn (In(ReferenceParams)) ?[]Location,
+    textDocument_documentHighlight: fn (In(DocumentHighlightParams)) ?[]DocumentHighlight,
+    textDocument_documentSymbol: fn (In(DocumentSymbolParams)) ?union {
         flat: []SymbolInformation,
         hierarchy: []DocumentSymbol,
     },
-    textDocument_codeAction: fn (*std.heap.ArenaAllocator, CodeActionParams) ?[]union {
+    textDocument_codeAction: fn (In(CodeActionParams)) ?[]union {
         code_action: CodeAction,
         command: Command,
     },
-    textDocument_codeLens: fn (*std.heap.ArenaAllocator, CodeLensParams) ?[]CodeLens,
-    codeLens_resolve: fn (*std.heap.ArenaAllocator, CodeLens) CodeLens,
-    textDocument_documentLink: fn (*std.heap.ArenaAllocator, DocumentLinkParams) ?[]DocumentLink,
-    documentLink_resolve: fn (*std.heap.ArenaAllocator, DocumentLink) DocumentLink,
-    textDocument_documentColor: fn (*std.heap.ArenaAllocator, DocumentColorParams) []ColorInformation,
-    textDocument_colorPresentation: fn (*std.heap.ArenaAllocator, ColorPresentationParams) []ColorPresentation,
-    textDocument_formatting: fn (*std.heap.ArenaAllocator, DocumentFormattingParams) ?[]TextEdit,
-    textDocument_rangeFormatting: fn (*std.heap.ArenaAllocator, DocumentRangeFormattingParams) ?[]TextEdit,
-    textDocument_onTypeFormatting: fn (*std.heap.ArenaAllocator, DocumentOnTypeFormattingParams) ?[]TextEdit,
-    textDocument_rename: fn (*std.heap.ArenaAllocator, RenameParams) ?[]WorkspaceEdit,
-    textDocument_prepareRename: fn (*std.heap.ArenaAllocator, TextDocumentPositionParams) ?Range,
-    textDocument_foldingRange: fn (*std.heap.ArenaAllocator, FoldingRangeParams) ?[]FoldingRange,
-    textDocument_selectionRange: fn (*std.heap.ArenaAllocator, SelectionRangeParams) ?[]SelectionRange,
+    textDocument_codeLens: fn (In(CodeLensParams)) ?[]CodeLens,
+    codeLens_resolve: fn (In(CodeLens)) CodeLens,
+    textDocument_documentLink: fn (In(DocumentLinkParams)) ?[]DocumentLink,
+    documentLink_resolve: fn (In(DocumentLink)) DocumentLink,
+    textDocument_documentColor: fn (In(DocumentColorParams)) []ColorInformation,
+    textDocument_colorPresentation: fn (In(ColorPresentationParams)) []ColorPresentation,
+    textDocument_formatting: fn (In(DocumentFormattingParams)) ?[]TextEdit,
+    textDocument_rangeFormatting: fn (In(DocumentRangeFormattingParams)) ?[]TextEdit,
+    textDocument_onTypeFormatting: fn (In(DocumentOnTypeFormattingParams)) ?[]TextEdit,
+    textDocument_rename: fn (In(RenameParams)) ?[]WorkspaceEdit,
+    textDocument_prepareRename: fn (In(TextDocumentPositionParams)) ?Range,
+    textDocument_foldingRange: fn (In(FoldingRangeParams)) ?[]FoldingRange,
+    textDocument_selectionRange: fn (In(SelectionRangeParams)) ?[]SelectionRange,
 };
 
 pub const RequestOut = union(enum) {

@@ -129,15 +129,17 @@ fn handleIncomingMsg(comptime T: type, self: *LangServer, mem: *std.heap.ArenaAl
                 const type_fn_info = @typeInfo(TMember).Fn;
                 var fn_ret: ?type_fn_info.return_type.? = null;
                 if ((if (T == lspt.NotifyIn) self.handlers_notifies else self.handlers_requests)[i]) |fn_ptr| {
-                    const fn_val = @intToPtr(TMember, fn_ptr);
-                    const fn_ret_tmp = if (type_fn_info.args.len == 1)
-                        fn_val(mem)
-                    else
-                        fn_val(mem, if (payload) |*p|
-                            (try lspj.unmarshal(type_fn_info.args[1].arg_type.?, mem, p)) orelse
-                                (if (@typeId(type_fn_info.args[1].arg_type.?) == .Optional) null else return)
+                    var fn_arg: type_fn_info.args[0].arg_type.? = undefined;
+                    fn_arg.mem = &mem.allocator;
+                    const fn_arg_param_type = @TypeOf(fn_arg.it);
+                    if (fn_arg_param_type != void)
+                        fn_arg.it = if (payload) |*p|
+                            (try lspj.unmarshal(fn_arg_param_type, mem, p)) orelse
+                                (if (@typeId(fn_arg_param_type) == .Optional) null else return)
                         else
-                            return);
+                            return;
+                    const fn_val = @intToPtr(TMember, fn_ptr);
+                    const fn_ret_tmp = fn_val(fn_arg);
                     fn_ret = fn_ret_tmp; // TODO: ditch useless intermediate const when "broken LLVM module found" goes away
                 } else if (T == lspt.RequestIn) {
                     // request not handled by current setup. LSP requires a response for every request with result-or-err. thus send default err response
@@ -161,22 +163,22 @@ pub fn fail(code: ?isize, message: ?[]const u8, data: ?lspt.JsonAny) lspt.Respon
     };
 }
 
-fn onInitialize(mem: *std.heap.ArenaAllocator, params: lspt.InitializeParams) lspt.Out(lspt.InitializeResult) {
-    std.debug.warn("\nINIT-REQ\t{}\n", .{params});
+fn onInitialize(in: lspt.In(lspt.InitializeParams)) lspt.Out(lspt.InitializeResult) {
+    std.debug.warn("\nINIT-REQ\t{}\n", .{in.it});
     if (LangServer.setup.serverInfo) |*server_info| {
         if (server_info.name.len == 0) {
             _ = fail(12345, "foo", null);
-            const args = std.process.argsAlloc(&mem.allocator) catch return .{ .failed = fail(null, null, null) };
+            const args = std.process.argsAlloc(in.mem) catch unreachable;
             server_info.name = args[0];
         }
     }
     return .{ .result = LangServer.setup };
 }
 
-fn onCancel(mem: *std.heap.ArenaAllocator, params: lspt.CancelParams) void {
+fn onCancel(in: lspt.In(lspt.CancelParams)) void {
     // TODO
 }
 
-fn onExit(mem: *std.heap.ArenaAllocator) void {
+fn onExit(in: lspt.In(void)) void {
     std.os.exit(0);
 }
