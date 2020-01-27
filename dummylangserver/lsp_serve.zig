@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const lspt = @import("./lsp_types.zig");
+usingnamespace @import("./lsp_types.zig");
 const lspj = @import("./lsp_json.zig");
 
 pub const LangServer = struct {
@@ -8,22 +8,22 @@ pub const LangServer = struct {
     output: std.io.OutStream(std.os.WriteError),
     mem_alloc_for_arenas: *std.mem.Allocator,
 
-    handlers_requests: [@memberCount(lspt.RequestIn)]?usize = ([_]?usize{null}) ** @memberCount(lspt.RequestIn),
-    handlers_notifies: [@memberCount(lspt.NotifyIn)]?usize = ([_]?usize{null}) ** @memberCount(lspt.NotifyIn),
+    handlers_requests: [@memberCount(RequestIn)]?usize = ([_]?usize{null}) ** @memberCount(RequestIn),
+    handlers_notifies: [@memberCount(NotifyIn)]?usize = ([_]?usize{null}) ** @memberCount(NotifyIn),
 
-    pub var setup = lspt.InitializeResult{
+    pub var setup = InitializeResult{
         .capabilities = .{},
         .serverInfo = .{ .name = "" }, // if empty, will be set to `process.args[0]`
     };
 
     pub fn on(self: *LangServer, comptime handler: var) void {
         const T = @TypeOf(handler);
-        if (T != lspt.RequestIn and T != lspt.NotifyIn)
+        if (T != RequestIn and T != NotifyIn)
             @compileError(@typeName(T));
 
         const idx = comptime @enumToInt(std.meta.activeTag(handler));
         const fn_ptr = @ptrToInt(@field(handler, @memberName(T, idx)));
-        const arr = &(comptime if (T == lspt.RequestIn) self.handlers_requests else self.handlers_notifies);
+        const arr = &(comptime if (T == RequestIn) self.handlers_requests else self.handlers_notifies);
         if (arr[idx]) |_|
             @panic("LangServer.on(" ++ @memberName(T, idx) ++ ") already subscribed-to, cannot overwrite existing subscriber");
         arr[idx] = fn_ptr;
@@ -35,9 +35,9 @@ pub const LangServer = struct {
         defer mem_buf.deinit();
         const buf = &try std.ArrayList(u8).initCapacity(&mem_buf.allocator, 16 * 1024); // initial cap must be big enough to catch the first occurrence of `Content-Length:` header, from there on out `buf` grows to any Content-Length greater than its current-capacity (which is never shrunk)
 
-        self.on(lspt.RequestIn{ .initialize = onInitialize });
-        self.on(lspt.NotifyIn{ .__cancelRequest = onCancel });
-        self.on(lspt.NotifyIn{ .exit = onExit });
+        self.on(RequestIn{ .initialize = onInitialize });
+        self.on(NotifyIn{ .__cancelRequest = onCancel });
+        self.on(NotifyIn{ .exit = onExit });
 
         var got_content_len: ?usize = null;
         var did_full_full_msg = false;
@@ -99,24 +99,24 @@ fn handleFullIncomingJsonPayload(self: *LangServer, raw_json_bytes: []const u8) 
             const msg_id = hashmap.getValue("id");
             const msg_name = hashmap.getValue("method");
             if (msg_id) |*id_jsonval| {
-                if (try lspj.unmarshal(lspt.IntOrString, &mem_keep, id_jsonval)) |id| {
+                if (try lspj.unmarshal(IntOrString, &mem_keep, id_jsonval)) |id| {
                     if (msg_name) |jstr| switch (jstr) {
-                        .String => |method_name| try handleIncomingMsg(lspt.RequestIn, self, &mem_keep, id, method_name, hashmap.getValue("params")),
+                        .String => |method_name| try handleIncomingMsg(RequestIn, self, &mem_keep, id, method_name, hashmap.getValue("params")),
                         else => {},
                     } else if (hashmap.getValue("error")) |jerr|
                         std.debug.warn("RESP-ERR\t{}\n", .{jerr}) // TODO: ResponseError
                     else
-                        try handleIncomingMsg(lspt.ResponseIn, self, &mem_keep, id, null, hashmap.getValue("result"));
+                        try handleIncomingMsg(ResponseIn, self, &mem_keep, id, null, hashmap.getValue("result"));
                 }
             } else if (msg_name) |jstr| switch (jstr) {
-                .String => |method_name| try handleIncomingMsg(lspt.NotifyIn, self, &mem_keep, null, method_name, hashmap.getValue("params")),
+                .String => |method_name| try handleIncomingMsg(NotifyIn, self, &mem_keep, null, method_name, hashmap.getValue("params")),
                 else => {},
             };
         },
     }
 }
 
-fn handleIncomingMsg(comptime T: type, self: *LangServer, mem: *std.heap.ArenaAllocator, id: ?lspt.IntOrString, method_name: ?[]const u8, payload: ?std.json.Value) !void {
+fn handleIncomingMsg(comptime T: type, self: *LangServer, mem: *std.heap.ArenaAllocator, id: ?IntOrString, method_name: ?[]const u8, payload: ?std.json.Value) !void {
     const method = if (method_name) |name| name else "TODO: fetch from dangling response-awaiters";
     const member_name = @import("./xstd.mem.zig").replaceScalar(u8, try std.mem.dupe(&mem.allocator, u8, method), "$/", '_');
 
@@ -124,11 +124,11 @@ fn handleIncomingMsg(comptime T: type, self: *LangServer, mem: *std.heap.ArenaAl
     inline while (i > 0) {
         i -= 1;
         if (std.mem.eql(u8, @memberName(T, i), member_name)) {
-            if (T == lspt.NotifyIn or T == lspt.RequestIn) {
+            if (T == NotifyIn or T == RequestIn) {
                 const TMember = @memberType(T, i);
                 const type_fn_info = @typeInfo(TMember).Fn;
                 var fn_ret: ?type_fn_info.return_type.? = null;
-                if ((if (T == lspt.NotifyIn) self.handlers_notifies else self.handlers_requests)[i]) |fn_ptr| {
+                if ((if (T == NotifyIn) self.handlers_notifies else self.handlers_requests)[i]) |fn_ptr| {
                     var fn_arg: type_fn_info.args[0].arg_type.? = undefined;
                     fn_arg.mem = &mem.allocator;
                     const fn_arg_param_type = @TypeOf(fn_arg.it);
@@ -141,12 +141,12 @@ fn handleIncomingMsg(comptime T: type, self: *LangServer, mem: *std.heap.ArenaAl
                     const fn_val = @intToPtr(TMember, fn_ptr);
                     const fn_ret_tmp = fn_val(fn_arg);
                     fn_ret = fn_ret_tmp; // TODO: ditch useless intermediate const when "broken LLVM module found" goes away
-                } else if (T == lspt.RequestIn) {
+                } else if (T == RequestIn) {
                     // request not handled by current setup. LSP requires a response for every request with result-or-err. thus send default err response
                 }
                 if (fn_ret) |ret|
                     std.debug.warn("\n{} RET\t{}\n", .{ member_name, ret });
-            } else if (T == lspt.ResponseIn) {
+            } else if (T == ResponseIn) {
                 // TODO
             } else
                 @compileError(@typeName(T));
@@ -155,30 +155,28 @@ fn handleIncomingMsg(comptime T: type, self: *LangServer, mem: *std.heap.ArenaAl
     }
 }
 
-pub fn fail(code: ?isize, message: ?[]const u8, data: ?lspt.JsonAny) lspt.ResponseError {
-    return lspt.ResponseError{
-        .code = code orelse @enumToInt(lspt.ErrorCodes.InternalError),
-        .message = message orelse "unspecified error",
+pub fn fail(code: ?isize, message: ?[]const u8, data: ?JsonAny) ResponseError {
+    return ResponseError{
+        .code = code orelse @enumToInt(ErrorCodes.InternalError),
+        .message = message orelse "unknown error",
         .data = data,
     };
 }
 
-fn onInitialize(in: lspt.In(lspt.InitializeParams)) lspt.Out(lspt.InitializeResult) {
+fn onInitialize(in: In(InitializeParams)) Out(InitializeResult) {
     std.debug.warn("\nINIT-REQ\t{}\n", .{in.it});
-    if (LangServer.setup.serverInfo) |*server_info| {
+    if (LangServer.setup.serverInfo) |*server_info|
         if (server_info.name.len == 0) {
-            _ = fail(12345, "foo", null);
             const args = std.process.argsAlloc(in.mem) catch unreachable;
             server_info.name = args[0];
-        }
-    }
-    return .{ .result = LangServer.setup };
+        };
+    return .{ .ok = LangServer.setup };
 }
 
-fn onCancel(in: lspt.In(lspt.CancelParams)) void {
+fn onCancel(in: In(CancelParams)) void {
     // TODO
 }
 
-fn onExit(in: lspt.In(void)) void {
+fn onExit(in: In(void)) void {
     std.os.exit(0);
 }

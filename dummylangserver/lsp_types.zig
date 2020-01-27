@@ -11,8 +11,8 @@ pub fn In(comptime T: type) type {
 
 pub fn Out(comptime T: type) type {
     return union {
-        result: T,
-        failed: ResponseError,
+        ok: T,
+        err: ResponseError,
     };
 }
 
@@ -97,7 +97,7 @@ pub const NotifyOut = union(enum) {
 
 pub const RequestIn = union(enum) {
     initialize: fn (In(InitializeParams)) Out(InitializeResult),
-    shutdown: fn (In(void)) void,
+    shutdown: fn (In(void)) Out(void),
     workspace_symbol: fn (In(WorkspaceSymbolParams)) ?[]SymbolInformation,
     workspace_executeCommand: fn (In(ExecuteCommandParams)) ?JsonAny,
     textDocument_willSaveWaitUntil: fn (In(WillSaveTextDocumentParams)) ?[]TextEdit,
