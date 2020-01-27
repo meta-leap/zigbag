@@ -2,6 +2,13 @@ const std = @import("std");
 
 const types = @import("./lsp_types.zig");
 
+/// sadly LSP has "typical prog-lang keyword" field names like `type` and `error`
+fn unescapeKeyword(comptime field_name: []const u8) []const u8 {
+    if (field_name.len > 2 and '_' == field_name[field_name.len - 1] and '_' == field_name[field_name.len - 2])
+        return field_name[0 .. field_name.len - 2];
+    return field_name;
+}
+
 pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const std.json.Value) ?T {
     const type_id = comptime @typeId(T);
     const type_info = comptime @typeInfo(T);
@@ -101,7 +108,7 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
                         if (unmarshal(field_type, mem, from)) |it|
                             @field(ret, field_name) = it;
                         // else return null; // TODO: compiler segfaults with this currently (January 2020), not an issue until we begin seeing the below stderr print in the wild though
-                    } else if (jmap.getValue(comptime std.mem.trimRight(u8, field_name, "_"))) |*jval| {
+                    } else if (jmap.getValue(unescapeKeyword(field_name))) |*jval| {
                         if (unmarshal(field_type, mem, jval)) |it|
                             @field(ret, field_name) = it
                         else if (@typeId(field_type) != .Optional)
@@ -164,7 +171,7 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var) std.json.Value {
                     while (obj.next()) |item|
                         _ = ret.Object.put(item.key, item.value) catch unreachable;
                 } else if (!field_is_null) {
-                    _ = ret.Object.put(comptime std.mem.trimRight(u8, field_name, "_"), marshal(mem, field_value)) catch unreachable;
+                    _ = ret.Object.put(unescapeKeyword(field_name), marshal(mem, field_value)) catch unreachable;
                 }
             }
             return ret;

@@ -60,9 +60,7 @@ pub const LangServer = struct {
                     };
 
             if (got_content_len) |content_len| {
-                std.debug.warn("got_content_len:\t{}\n", .{content_len});
                 if (std.mem.indexOf(u8, so_far, "\r\n\r\n")) |idx| {
-                    std.debug.warn("got_sep:\t{}\n", .{idx});
                     const got = buf.items[idx + 4 .. buf.len];
                     std.mem.copy(u8, buf.items[0..got.len], got);
                     buf.len = got.len;
