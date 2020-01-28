@@ -32,11 +32,11 @@ pub const NotifyIn = union(enum) {
 };
 
 pub const NotifyOut = union(enum) {
-    __progress: *ProgressParams,
-    window_showMessage: *ShowMessageParams,
-    window_logMessage: *LogMessageParams,
-    telemetry_event: *JsonAny,
-    textDocument_publishDiagnostics: *PublishDiagnosticsParams,
+    __progress: ProgressParams,
+    window_showMessage: ShowMessageParams,
+    window_logMessage: LogMessageParams,
+    telemetry_event: JsonAny,
+    textDocument_publishDiagnostics: PublishDiagnosticsParams,
 };
 
 pub const RequestIn = union(enum) {
@@ -91,13 +91,13 @@ pub const RequestIn = union(enum) {
 };
 
 pub const RequestOut = union(enum) {
-    window_showMessageRequest: Req(*ShowMessageRequestParams, void),
-    window_workDoneProgress_create: Req(*WorkDoneProgressCreateParams, void),
-    client_registerCapability: Req(*RegistrationParams, void),
-    client_unregisterCapability: Req(*UnregistrationParams, void),
+    window_showMessageRequest: Req(ShowMessageRequestParams, void),
+    window_workDoneProgress_create: Req(WorkDoneProgressCreateParams, void),
+    client_registerCapability: Req(RegistrationParams, void),
+    client_unregisterCapability: Req(UnregistrationParams, void),
     workspace_workspaceFolders: Req(void, ?[]WorkspaceFolder),
-    workspace_configuration: Req(*ConfigurationParams, []JsonAny),
-    workspace_applyEdit: Req(*ApplyWorkspaceEditParams, ApplyWorkspaceEditResponse),
+    workspace_configuration: Req(ConfigurationParams, []JsonAny),
+    workspace_applyEdit: Req(ApplyWorkspaceEditParams, ApplyWorkspaceEditResponse),
 };
 
 pub const CancelParams = struct {

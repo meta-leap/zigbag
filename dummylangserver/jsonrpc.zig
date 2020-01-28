@@ -24,7 +24,7 @@ pub const ResponseError = struct {
 pub fn Req(comptime TParam: type, comptime TRet: type) type {
     return struct {
         it: TParam = undefined,
-        state: var,
+        then: var,
     };
 }
 
@@ -129,11 +129,11 @@ pub fn Protocol(comptime spec: Spec) type {
 
         fn handleIncomingMsg(comptime T: type, self: *@This(), mem: *std.heap.ArenaAllocator, id: ?spec.TRequestId, method_name: ?[]const u8, payload: ?std.json.Value) void {}
 
-        pub fn out(self: *@This(), notify_or_request: var, on_response: var) void {
-            const TResp = @TypeOf(on_response);
-            const is_notify = (TResp == void);
-            if ((!is_notify) and @typeId(TResp) != .Struct) // coarse check only here, no full struct decls scrutinizing.. users rtfm
-                @compileError("jsonrpc.Protocol.out: on_response arg must be void or a struct with a .then(Out(T)) instance method, not " ++ @typeName(TResp));
+        pub fn out(self: *@This(), notify_or_request: var) void {
+            const T = @TypeOf(notify_or_request);
+            const is_notify = (T == spec.TNotifyOut);
+            if (T != spec.TRequestOut and !is_notify)
+                @compileError(@typeName(T));
         }
     };
 }

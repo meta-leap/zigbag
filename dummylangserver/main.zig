@@ -32,10 +32,16 @@ fn tmpMockToForceCompilations() void {
     _ = jrpc.Out;
     _ = jrpc.Req;
     _ = jrpc.JsonAny;
-    sess.out(tmpj.NotifyOut{ .window_showMessage = &tmpj.ShowMessageParams{ .type__ = .Info, .message = "Ohai" } }, .{ 10, 20 });
+    sess.out(tmpj.NotifyOut{ .window_showMessage = .{ .type__ = .Info, .message = "Ohai" } });
     sess.on(tmpj.NotifyIn{ .__cancelRequest = tmp_oncancel });
     sess.on(tmpj.NotifyIn{ .exit = tmp_onexit });
     sess.on(tmpj.RequestIn{ .initialize = tmp_oninit });
+    sess.out(tmpj.RequestOut{
+        .workspace_configuration = .{
+            .it = .{ .items = &[_]tmpj.ConfigurationItem{} },
+            .then = 123,
+        },
+    });
 }
 
 fn tmp_oninit(in: tmpj.In(tmpj.InitializeParams)) tmpj.Out(tmpj.InitializeResult) {
