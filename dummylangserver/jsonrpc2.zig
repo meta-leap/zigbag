@@ -1,5 +1,7 @@
 const std = @import("std");
 
+pub const String = []const u8;
+
 pub const ErrorCodes = enum(i32) {
     ParseError = -32700,
     InvalidRequest = -32600,
@@ -10,6 +12,13 @@ pub const ErrorCodes = enum(i32) {
     serverErrorEnd = -32000,
     ServerNotInitialized = -32002,
     UnknownErrorCode = -32001,
+};
+
+pub const ResponseError = struct {
+    /// see `ErrorCodes` enumeration
+    code: isize,
+    message: String,
+    data: ?JsonAny,
 };
 
 pub fn In(comptime T: type) type {
@@ -23,22 +32,6 @@ pub fn Out(comptime T: type) type {
     return union(enum) {
         ok: T,
         err: ResponseError,
-
-        fn toJsonRpcResponse(self: @This(), id: IntOrString) ?union(enum) {
-            with_result: struct {
-                id: IntOrString,
-                result: T,
-            },
-            with_error: struct {
-                id: IntOrString,
-                error__: ResponseError,
-            },
-        } {
-            return switch (self) {
-                .ok => |it| .{ .with_result = .{ .id = id, .result = it } },
-                .err => |e| .{ .with_error = .{ .id = id, .error__ = e } },
-            };
-        }
     };
 }
 
@@ -52,6 +45,7 @@ pub const JsonAny = union(enum) {
 };
 
 pub const Spec = struct {
+    TRequestId: type,
     TRequestIn: type,
     TResponseOut: type,
     TRequestOut: type,
@@ -67,7 +61,7 @@ pub fn Protocol(comptime spec: Spec) type {
         handlers_requests: [@memberCount(spec.TRequestIn)]?usize = ([_]?usize{null}) ** @memberCount(spec.TRequestIn),
         handlers_notifies: [@memberCount(spec.TNotifyIn)]?usize = ([_]?usize{null}) ** @memberCount(spec.TNotifyIn),
 
-        pub fn on(self: *Protocol, comptime handler: var) void {
+        pub fn subscribe(self: *@This(), comptime handler: var) void {
             const T = @TypeOf(handler);
             if (T != spec.TRequestIn and T != spec.TNotifyIn)
                 @compileError(@typeName(T));
@@ -80,8 +74,55 @@ pub fn Protocol(comptime spec: Spec) type {
             arr[idx] = fn_ptr;
         }
 
-        pub fn in(self: *Protocol, msg: *std.json.Value) void {}
+        pub fn incoming(self: *@This(), full_incoming_jsonrpc_msg_payload: []const u8) void {
+            var mem_json = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
+            defer mem_json.deinit();
+            var mem_keep = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
+            defer mem_keep.deinit(); // TODO: move this to proper place when moving to threaded-queuing
 
-        pub fn out(self: *Protocol) void {}
+            var json_parser = std.json.Parser.init(&mem_json.allocator, true);
+            var json_tree = json_parser.parse(full_incoming_jsonrpc_msg_payload) catch return;
+            switch (json_tree.root) {
+                else => {},
+                std.json.Value.Object => |*hashmap| {
+                    const msg_id = hashmap.getValue("id");
+                    const msg_name = hashmap.getValue("method");
+                    if (msg_id) |*id_jsonval| {
+                        // if (lspj.unmarshal(spec.TRequestId, &mem_keep, id_jsonval)) |id| {
+                        //     if (msg_name) |jstr| switch (jstr) {
+                        //         .String => |method_name| handleIncomingMsg(RequestIn, self, &mem_keep, id, method_name, hashmap.getValue("params")),
+                        //         else => {},
+                        //     } else if (hashmap.getValue("error")) |jerr|
+                        //         std.debug.warn("RESP-ERR\t{}\n", .{jerr}) // TODO: ResponseError
+                        //     else
+                        //         handleIncomingMsg(ResponseIn, self, &mem_keep, id, null, hashmap.getValue("result"));
+                        // }
+                    } else if (msg_name) |jstr| switch (jstr) {
+                        .String => |method_name| handleIncomingMsg(spec.TNotifyIn, self, &mem_keep, null, method_name, hashmap.getValue("params")),
+                        else => {},
+                    };
+                },
+            }
+        }
+
+        fn handleIncomingMsg(comptime T: type, self: *@This(), mem: *std.heap.ArenaAllocator, id: ?spec.TRequestId, method_name: ?[]const u8, payload: ?std.json.Value) void {}
+
+        pub fn outgoing(self: *@This()) void {}
+    };
+}
+
+pub fn toJsonRpcResponse(out: var, id: var) ?union(enum) {
+    with_result: struct {
+        id: @TypeOf(id),
+        result: T,
+    },
+    with_error: struct {
+        id: @TypeOf(id),
+        error__: ResponseError,
+    },
+} {
+    return switch (self) {
+        .ok => |it| .{ .with_result = .{ .id = id, .result = it } },
+        .err => |e| .{ .with_error = .{ .id = id, .error__ = e } },
     };
 }
