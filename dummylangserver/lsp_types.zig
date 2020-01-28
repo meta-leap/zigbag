@@ -3,6 +3,7 @@ const std = @import("std");
 const jsonrpc = @import("./jsonrpc.zig");
 pub const In = jsonrpc.In;
 pub const Out = jsonrpc.Out;
+pub const Req = jsonrpc.Req;
 pub const String = jsonrpc.String;
 pub const JsonAny = jsonrpc.JsonAny;
 
@@ -90,74 +91,13 @@ pub const RequestIn = union(enum) {
 };
 
 pub const RequestOut = union(enum) {
-    window_showMessageRequest: *ShowMessageRequestParams,
-    window_workDoneProgress_create: *WorkDoneProgressCreateParams,
-    client_registerCapability: *RegistrationParams,
-    client_unregisterCapability: *UnregistrationParams,
-    workspace_workspaceFolders,
-    workspace_configuration: *ConfigurationParams,
-    workspace_applyEdit: *ApplyWorkspaceEditParams,
-};
-
-pub const ResponseIn = union(enum) {
-    window_showMessageRequest: fn (?*MessageActionItem) void,
-    window_workDoneProgress_create: fn () void,
-    client_registerCapability: fn () void,
-    client_unregisterCapability: fn () void,
-    workspace_workspaceFolders: fn (?[]WorkspaceFolder) void,
-    workspace_configuration: fn ([]JsonAny) void,
-    workspace_applyEdit: fn (*ApplyWorkspaceEditResponse) void,
-};
-
-pub const ResponseOut = union(enum) {
-    initialize: *InitializeResult,
-    shutdown,
-    workspace_symbol: ?[]SymbolInformation,
-    workspace_executeCommand: ?*JsonAny,
-    textDocument_willSaveWaitUntil: ?[]TextEdit,
-    textDocument_completion: ?*CompletionList,
-    completionItem_resolve: *CompletionItem,
-    textDocument_hover: ?*Hover,
-    textDocument_signatureHelp: ?*SignatureHelp,
-    textDocument_declaration: ?union(enum) {
-        locations: []Location,
-        links: []LocationLink,
-    },
-    textDocument_definition: ?union(enum) {
-        locations: []Location,
-        links: []LocationLink,
-    },
-    textDocument_typeDefinition: ?union(enum) {
-        locations: []Location,
-        links: []LocationLink,
-    },
-    textDocument_implementation: ?union(enum) {
-        locations: []Location,
-        links: []LocationLink,
-    },
-    textDocument_references: ?[]Location,
-    textDocument_documentHighlight: ?[]DocumentHighlight,
-    textDocument_documentSymbol: ?union(enum) {
-        flat: []SymbolInformation,
-        hierarchy: []DocumentSymbol,
-    },
-    textDocument_codeAction: ?[]union(enum) {
-        code_action: CodeAction,
-        command: Command,
-    },
-    textDocument_codeLens: ?[]CodeLens,
-    codeLens_resolve: *CodeLens,
-    textDocument_documentLink: ?[]DocumentLink,
-    documentLink_resolve: *DocumentLink,
-    textDocument_documentColor: []ColorInformation,
-    textDocument_colorPresentation: []ColorPresentation,
-    textDocument_formatting: ?[]TextEdit,
-    textDocument_rangeFormatting: ?[]TextEdit,
-    textDocument_onTypeFormatting: ?[]TextEdit,
-    textDocument_rename: ?[]WorkspaceEdit,
-    textDocument_prepareRename: ?*Range,
-    textDocument_foldingRange: ?[]FoldingRange,
-    textDocument_selectionRange: ?[]SelectionRange,
+    window_showMessageRequest: Req(*ShowMessageRequestParams, void),
+    window_workDoneProgress_create: Req(*WorkDoneProgressCreateParams, void),
+    client_registerCapability: Req(*RegistrationParams, void),
+    client_unregisterCapability: Req(*UnregistrationParams, void),
+    workspace_workspaceFolders: Req(void, ?[]WorkspaceFolder),
+    workspace_configuration: Req(*ConfigurationParams, []JsonAny),
+    workspace_applyEdit: Req(*ApplyWorkspaceEditParams, ApplyWorkspaceEditResponse),
 };
 
 pub const CancelParams = struct {

@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const tmpj = @import("./lsp_types.zig");
+
 const LangServer = @import("./lsp_serve.zig").LangServer;
 
 pub fn main() !u8 {
@@ -14,23 +16,32 @@ pub fn main() !u8 {
 }
 
 fn tmpMockToForceCompilations() void {
-    const jt = @import("./lsp_types.zig");
     const jrpc = @import("./jsonrpc.zig");
-    const sess = jrpc.Protocol(.{
-        .TRequestId = jt.IntOrString,
-        .TRequestIn = jt.RequestIn,
-        .TResponseOut = jt.ResponseOut,
-        .TRequestOut = jt.RequestOut,
-        .TResponseIn = jt.ResponseIn,
-        .TNotifyIn = jt.NotifyIn,
-        .TNotifyOut = jt.NotifyOut,
-    });
+    var sess = jrpc.Protocol(.{
+            .TRequestId = tmpj.IntOrString,
+            .TRequestIn = tmpj.RequestIn,
+            .TRequestOut = tmpj.RequestOut,
+            .TNotifyIn = tmpj.NotifyIn,
+            .TNotifyOut = tmpj.NotifyOut,
+        }){
+        .mem_alloc_for_arenas = std.heap.page_allocator,
+    };
     _ = jrpc.ErrorCodes;
     _ = jrpc.ResponseError;
     _ = jrpc.In;
     _ = jrpc.Out;
+    _ = jrpc.Req;
     _ = jrpc.JsonAny;
-    _ = sess.incoming;
-    _ = sess.outgoing;
-    _ = sess.subscribe;
+    sess.out(tmpj.NotifyOut{ .window_showMessage = &tmpj.ShowMessageParams{ .type__ = .Info, .message = "Ohai" } }, .{ 10, 20 });
+    sess.on(tmpj.NotifyIn{ .__cancelRequest = tmp_oncancel });
+    sess.on(tmpj.NotifyIn{ .exit = tmp_onexit });
+    sess.on(tmpj.RequestIn{ .initialize = tmp_oninit });
 }
+
+fn tmp_oninit(in: tmpj.In(tmpj.InitializeParams)) tmpj.Out(tmpj.InitializeResult) {
+    return .{ .ok = LangServer.setup };
+}
+
+fn tmp_oncancel(in: tmpj.In(tmpj.CancelParams)) void {}
+
+fn tmp_onexit(in: tmpj.In(void)) void {}

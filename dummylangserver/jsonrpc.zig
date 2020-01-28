@@ -21,6 +21,13 @@ pub const ResponseError = struct {
     data: ?JsonAny,
 };
 
+pub fn Req(comptime TParam: type, comptime TRet: type) type {
+    return struct {
+        it: TParam = undefined,
+        state: var,
+    };
+}
+
 pub fn In(comptime T: type) type {
     return struct {
         it: T,
@@ -63,9 +70,7 @@ pub const JsonAny = union(enum) {
 pub const Spec = struct {
     TRequestId: type,
     TRequestIn: type,
-    TResponseOut: type,
     TRequestOut: type,
-    TResponseIn: type,
     TNotifyIn: type,
     TNotifyOut: type,
 };
@@ -76,8 +81,9 @@ pub fn Protocol(comptime spec: Spec) type {
 
         handlers_requests: [@memberCount(spec.TRequestIn)]?usize = ([_]?usize{null}) ** @memberCount(spec.TRequestIn),
         handlers_notifies: [@memberCount(spec.TNotifyIn)]?usize = ([_]?usize{null}) ** @memberCount(spec.TNotifyIn),
+        // handlers_responses: [@memberCount(spec.TResponseIn)]
 
-        pub fn subscribe(self: *@This(), comptime handler: var) void {
+        pub fn on(self: *@This(), comptime handler: var) void {
             const T = @TypeOf(handler);
             if (T != spec.TRequestIn and T != spec.TNotifyIn)
                 @compileError(@typeName(T));
@@ -86,11 +92,11 @@ pub fn Protocol(comptime spec: Spec) type {
             const fn_ptr = @ptrToInt(@field(handler, @memberName(T, idx)));
             const arr = &(comptime if (T == spec.TRequestIn) self.handlers_requests else self.handlers_notifies);
             if (arr[idx]) |_|
-                @panic("jsonrpc2.Protocol.on(" ++ @memberName(T, idx) ++ ") already subscribed-to, cannot overwrite existing subscriber");
+                @panic("jsonrpc.Protocol.on(" ++ @memberName(T, idx) ++ ") already subscribed-to, cannot overwrite existing subscriber");
             arr[idx] = fn_ptr;
         }
 
-        pub fn incoming(self: *@This(), full_incoming_jsonrpc_msg_payload: []const u8) void {
+        pub fn in(self: *@This(), full_incoming_jsonrpc_msg_payload: []const u8) void {
             var mem_json = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
             defer mem_json.deinit();
             var mem_keep = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
@@ -123,6 +129,11 @@ pub fn Protocol(comptime spec: Spec) type {
 
         fn handleIncomingMsg(comptime T: type, self: *@This(), mem: *std.heap.ArenaAllocator, id: ?spec.TRequestId, method_name: ?[]const u8, payload: ?std.json.Value) void {}
 
-        pub fn outgoing(self: *@This()) void {}
+        pub fn out(self: *@This(), notify_or_request: var, on_response: var) void {
+            const TResp = @TypeOf(on_response);
+            const is_notify = (TResp == void);
+            if ((!is_notify) and @typeId(TResp) != .Struct) // coarse check only here, no full struct decls scrutinizing.. users rtfm
+                @compileError("jsonrpc.Protocol.out: on_response arg must be void or a struct with a .then(Out(T)) instance method, not " ++ @typeName(TResp));
+        }
     };
 }

@@ -97,6 +97,8 @@ fn handleFullIncomingJsonPayload(self: *LangServer, raw_json_bytes: []const u8) 
     var mem_keep = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
     defer mem_keep.deinit(); // TODO: move this to proper place when moving to threaded-queuing
 
+    std.debug.warn("\n\n>>>>>>>>>>>INPUT: {s}<<<<<<<<<<<\n\n", .{raw_json_bytes});
+
     var json_parser = std.json.Parser.init(&mem_json.allocator, true);
     var json_tree = json_parser.parse(raw_json_bytes) catch return;
     switch (json_tree.root) {
@@ -111,8 +113,9 @@ fn handleFullIncomingJsonPayload(self: *LangServer, raw_json_bytes: []const u8) 
                         else => {},
                     } else if (hashmap.getValue("error")) |jerr|
                         std.debug.warn("RESP-ERR\t{}\n", .{jerr}) // TODO: ResponseError
-                    else
-                        handleIncomingMsg(ResponseIn, self, &mem_keep, id, null, hashmap.getValue("result"));
+                    else {
+                        // handleIncomingMsg(ResponseIn, self, &mem_keep, id, null, hashmap.getValue("result"));
+                    }
                 }
             } else if (msg_name) |jstr| switch (jstr) {
                 .String => |method_name| handleIncomingMsg(NotifyIn, self, &mem_keep, null, method_name, hashmap.getValue("params")),
