@@ -32,6 +32,22 @@ pub fn Out(comptime T: type) type {
     return union(enum) {
         ok: T,
         err: ResponseError,
+
+        fn toJsonRpcResponse(self: @This(), id: var) ?union(enum) {
+            with_result: struct {
+                id: @TypeOf(id),
+                result: T,
+            },
+            with_error: struct {
+                id: @TypeOf(id),
+                error__: ResponseError,
+            },
+        } {
+            return switch (self) {
+                .ok => |it| .{ .with_result = .{ .id = id, .result = it } },
+                .err => |e| .{ .with_error = .{ .id = id, .error__ = e } },
+            };
+        }
     };
 }
 
@@ -108,21 +124,5 @@ pub fn Protocol(comptime spec: Spec) type {
         fn handleIncomingMsg(comptime T: type, self: *@This(), mem: *std.heap.ArenaAllocator, id: ?spec.TRequestId, method_name: ?[]const u8, payload: ?std.json.Value) void {}
 
         pub fn outgoing(self: *@This()) void {}
-    };
-}
-
-pub fn toJsonRpcResponse(out: var, id: var) ?union(enum) {
-    with_result: struct {
-        id: @TypeOf(id),
-        result: T,
-    },
-    with_error: struct {
-        id: @TypeOf(id),
-        error__: ResponseError,
-    },
-} {
-    return switch (self) {
-        .ok => |it| .{ .with_result = .{ .id = id, .result = it } },
-        .err => |e| .{ .with_error = .{ .id = id, .error__ = e } },
     };
 }

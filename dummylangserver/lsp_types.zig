@@ -1,92 +1,19 @@
 const std = @import("std");
 
-pub const String = []const u8;
-
-pub fn In(comptime T: type) type {
-    return struct {
-        it: T,
-        mem: *std.mem.Allocator,
-    };
-}
-
-pub fn Out(comptime T: type) type {
-    return union(enum) {
-        ok: T,
-        err: ResponseError,
-
-        fn toJsonRpcResponse(self: @This(), id: IntOrString) ?union(enum) {
-            with_result: struct {
-                id: IntOrString,
-                result: T,
-            },
-            with_error: struct {
-                id: IntOrString,
-                error__: ResponseError,
-            },
-        } {
-            return switch (self) {
-                .ok => |it| .{ .with_result = .{ .id = id, .result = it } },
-                .err => |e| .{ .with_error = .{ .id = id, .error__ = e } },
-            };
-        }
-    };
-}
+const jsonrpc = @import("./jsonrpc.zig");
+pub const In = jsonrpc.In;
+pub const Out = jsonrpc.Out;
+pub const String = jsonrpc.String;
+pub const JsonAny = jsonrpc.JsonAny;
 
 pub const ErrorCodes = enum(isize) {
-    /// defined by LSP
     RequestCancelled = -32800,
-
-    /// defined by LSP
     ContentModified = -32801,
-
-    /// defined by JSON-RPC
-    ParseError = -32700,
-
-    /// defined by JSON-RPC
-    InvalidRequest = -32600,
-
-    /// defined by JSON-RPC
-    MethodNotFound = -32601,
-
-    /// defined by JSON-RPC
-    InvalidParams = -32602,
-
-    /// defined by JSON-RPC
-    InternalError = -32603,
-
-    /// defined by JSON-RPC
-    serverErrorStart = -32099,
-
-    /// defined by JSON-RPC
-    serverErrorEnd = -32000,
-
-    /// defined by JSON-RPC
-    ServerNotInitialized = -32002,
-
-    /// defined by JSON-RPC
-    UnknownErrorCode = -32001,
 };
 
 pub const IntOrString = union(enum) {
     int: isize,
     string: String,
-};
-
-// we don't use std.json.Value union here because:
-// 1. after a full parse we want to have all the `std.json.Value`s fully
-// transformed into only such types owned in this source file.
-// 2. we also want to be able to then immediately dealloc whatever
-// std.json.Parser alloc'd, while keeping the result data for upcoming processing.
-// some of the LSP-prescribed types do contain free-form "JSON `any`-typed"
-// fields, these too should be preserved after std.json.Parser is dealloc'd.
-// 3. from current union design, every std.json.Value has a sizeOf std.HashMap, a fat struct!
-pub const JsonAny = union(enum) {
-    string: String,
-    boolean: bool,
-    int: i64,
-    float: f64,
-    array: []JsonAny,
-    object: ?*std.StringHashMap(JsonAny),
 };
 
 pub const NotifyIn = union(enum) {
@@ -231,13 +158,6 @@ pub const ResponseOut = union(enum) {
     textDocument_prepareRename: ?*Range,
     textDocument_foldingRange: ?[]FoldingRange,
     textDocument_selectionRange: ?[]SelectionRange,
-};
-
-pub const ResponseError = struct {
-    /// see `ErrorCodes` enumeration
-    code: isize,
-    message: String,
-    data: ?JsonAny,
 };
 
 pub const CancelParams = struct {

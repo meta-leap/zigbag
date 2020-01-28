@@ -1,6 +1,7 @@
 const std = @import("std");
 
 usingnamespace @import("./lsp_types.zig");
+const jsonrpc = @import("./jsonrpc.zig");
 const lspj = @import("./lsp_json.zig");
 
 pub const LangServer = struct {
@@ -161,7 +162,7 @@ fn handleIncomingMsg(comptime T: type, self: *LangServer, mem: *std.heap.ArenaAl
         }
     }
     if (T == RequestIn) {
-        const err = Out(void){ .err = fail(@enumToInt(ErrorCodes.MethodNotFound), method, null) };
+        const err = Out(void){ .err = fail(@enumToInt(jsonrpc.ErrorCodes.MethodNotFound), method, null) };
         sendRaw(mem, self, lspj.marshal(mem, err.toJsonRpcResponse(id.?))) catch {};
     }
 }
@@ -176,9 +177,9 @@ fn sendRaw(mem: *std.heap.ArenaAllocator, self: *LangServer, json_value: std.jso
     self.output.print("Content-Length: {d}\r\n\r\n{s}", .{ str.len, str }) catch unreachable;
 }
 
-pub fn fail(code: ?isize, message: ?[]const u8, data: ?JsonAny) ResponseError {
-    return ResponseError{
-        .code = code orelse @enumToInt(ErrorCodes.InternalError),
+pub fn fail(code: ?isize, message: ?[]const u8, data: ?JsonAny) jsonrpc.ResponseError {
+    return jsonrpc.ResponseError{
+        .code = code orelse @enumToInt(jsonrpc.ErrorCodes.InternalError),
         .message = message orelse "unknown error",
         .data = data,
     };

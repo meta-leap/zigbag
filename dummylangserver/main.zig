@@ -9,8 +9,13 @@ pub fn main() !u8 {
         .mem_alloc_for_arenas = std.heap.page_allocator,
     }).serve();
 
+    tmpMockToForceCompilations();
+    return 1;
+}
+
+fn tmpMockToForceCompilations() void {
     const jt = @import("./lsp_types.zig");
-    const jrpc = @import("./jsonrpc2.zig");
+    const jrpc = @import("./jsonrpc.zig");
     const sess = jrpc.Protocol(.{
         .TRequestId = jt.IntOrString,
         .TRequestIn = jt.RequestIn,
@@ -25,10 +30,7 @@ pub fn main() !u8 {
     _ = jrpc.In;
     _ = jrpc.Out;
     _ = jrpc.JsonAny;
-    _ = jrpc.toJsonRpcResponse;
     _ = sess.incoming;
     _ = sess.outgoing;
     _ = sess.subscribe;
-
-    return 1;
 }
