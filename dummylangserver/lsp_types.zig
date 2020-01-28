@@ -729,6 +729,7 @@ pub const ShowMessageParams = struct {
 };
 
 pub const MessageType = enum {
+    __ = 0,
     Error = 1,
     Warning = 2,
     Info = 3,
