@@ -37,34 +37,28 @@ test "demo" {
         .NotifyOut = OutgoingNotification,
     });
 
-    var engine = OurApi{
+    var our_api = OurApi{
         .mem_alloc_for_arenas = std.heap.page_allocator,
     };
-    defer engine.deinit();
+    defer our_api.deinit();
 
-    engine.on(IncomingNotification{ .timeInfo = on_timeInfo });
-    engine.on(IncomingRequest{ .neg = on_neg });
-    engine.on(IncomingRequest{ .envVarValue = on_envVarValue });
-    engine.on(IncomingRequest{ .hostName = on_hostName });
+    our_api.on(IncomingNotification{ .timeInfo = on_timeInfo });
+    our_api.on(IncomingRequest{ .neg = on_neg });
+    our_api.on(IncomingRequest{ .envVarValue = on_envVarValue });
+    our_api.on(IncomingRequest{ .hostName = on_hostName });
+
+    var jsonstr = our_api.out(OutgoingNotification{
+        .envVarNames = envVarNames(&mem.allocator),
+    }) catch unreachable;
+    std.debug.warn("\n\n===NotifyOut===\n{}\n\n", .{jsonstr});
 }
 
 fn on_timeInfo(in: In(TimeInfo)) void {
-    std.debug.warn("[NotifyIn]\nonTimeInfo: start={}, now={}\n", .{ in.it.start, in.it.now });
+    std.debug.warn("\n\n===NotifyIn===\nonTimeInfo: start={}, now={}\n\n", .{ in.it.start, in.it.now });
 }
 
 fn on_neg(in: In(i64)) Out(i64) {
     return .{ .ok = -in.it };
-}
-
-fn on_envVarValue(in: In(String)) Out(String) {
-    var i: usize = 0;
-
-    while (i < std.os.environ.len) : (i += 1) {
-        const name_value_pair = std.mem.toSlice(u8, std.os.environ[i]);
-        if (name_value_pair.len > in.it.len and std.mem.startsWith(u8, name_value_pair, in.it) and name_value_pair[in.it.len] == '=')
-            return .{ .ok = name_value_pair[in.it.len + 1 .. name_value_pair.len - 1] };
-    }
-    return .{ .err = .{ .code = 12345, .message = in.it } };
 }
 
 fn on_hostName(in: In(void)) Out(String) {
@@ -73,6 +67,25 @@ fn on_hostName(in: In(void)) Out(String) {
         return .{ .ok = host }
     else |err|
         return .{ .err = .{ .code = 54321, .message = @errorName(err) } };
+}
+
+fn on_envVarValue(in: In(String)) Out(String) {
+    for (std.os.environ) |name_value_pair, i| {
+        const pair = std.mem.toSlice(u8, std.os.environ[i]);
+        if (pair.len > in.it.len and std.mem.startsWith(u8, pair, in.it) and pair[in.it.len] == '=')
+            return .{ .ok = pair[in.it.len + 1 .. pair.len - 1] };
+    }
+    return .{ .err = .{ .code = 12345, .message = in.it } };
+}
+
+fn envVarNames(mem: *std.mem.Allocator) []String {
+    var ret = std.ArrayList(String).initCapacity(mem, std.os.environ.len) catch unreachable;
+    for (std.os.environ) |name_value_pair, i| {
+        const pair = std.mem.toSlice(u8, std.os.environ[i]);
+        if (std.mem.indexOfScalar(u8, pair, '=')) |pos|
+            ret.append(pair[0..pos]) catch unreachable;
+    }
+    return ret.toSlice();
 }
 
 const TimeInfo = struct {

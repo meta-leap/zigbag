@@ -127,7 +127,7 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
     return null;
 }
 
-pub fn marshal(mem: *std.heap.ArenaAllocator, from: var) std.json.Value {
+pub fn marshal(mem: *std.heap.ArenaAllocator, from: var) !std.json.Value {
     const T = comptime @TypeOf(from);
     const type_id = comptime @typeId(T);
     const type_info = comptime @typeInfo(T);
@@ -149,7 +149,7 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var) std.json.Value {
     else if (type_id == .Enum)
         return std.json.Value{ .Integer = @enumToInt(from) }
     else if (type_id == .Optional)
-        return if (from) |it| marshal(mem, it) else .{ .Null = .{} }
+        return if (from) |it| try marshal(mem, it) else .{ .Null = .{} }
     else if (type_id == .Struct) {
         const is_hash_map = comptime if (std.mem.indexOf(u8, @typeName(T), "ash")) |_| true else false;
         if (is_hash_map) {
@@ -167,22 +167,22 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var) std.json.Value {
                 if (comptime (@typeId(field_type) == .Optional))
                     field_is_null = (field_value == null);
                 if (comptime std.mem.eql(u8, field_name, @typeName(field_type))) {
-                    var obj = marshal(mem, field_value).Object.iterator();
+                    var obj = try marshal(mem, field_value).Object.iterator();
                     while (obj.next()) |item|
-                        _ = ret.Object.put(item.key, item.value) catch unreachable;
+                        _ = try ret.Object.put(item.key, item.value);
                 } else if (!field_is_null) {
-                    _ = ret.Object.put(unescapeKeyword(field_name), marshal(mem, field_value)) catch unreachable;
+                    _ = try ret.Object.put(unescapeKeyword(field_name), try marshal(mem, field_value));
                 }
             }
             return ret;
         }
     } else if (type_id == .Pointer) {
         if (type_info.Pointer.size != .Slice)
-            return marshal(mem, from.*)
+            return try marshal(mem, from.*)
         else {
             var ret = std.json.Value{ .Array = std.json.Array.init(&mem.allocator) }; // TODO: use initCapacity once zig compiler's "broken LLVM module found" bug goes away
             for (from) |item|
-                ret.Array.append(marshal(mem, item)) catch unreachable;
+                try ret.Array.append(try marshal(mem, item));
             return ret;
         }
     } else if (T == JsonAny)
@@ -191,15 +191,15 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var) std.json.Value {
             .boolean => std.json.Value{ .Bool = from.boolean },
             .int => std.json.Value{ .Integer = from.int },
             .float => std.json.Value{ .Float = from.float },
-            .array => marshal(mem, from.array),
-            .object => marshal(mem, from.object),
+            .array => try marshal(mem, from.array),
+            .object => try marshal(mem, from.object),
         }
     else if (type_id == .Union) {
         comptime var i = @memberCount(T);
         inline while (i > 0) {
             i -= 1;
             if (@enumToInt(std.meta.activeTag(from)) == i) {
-                return marshal(mem, @field(from, @memberName(T, i)));
+                return try marshal(mem, @field(from, @memberName(T, i)));
             }
         }
         unreachable;

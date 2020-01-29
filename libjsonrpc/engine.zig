@@ -70,12 +70,12 @@ pub fn Engine(comptime spec: Spec) type {
             //
         }
 
-        pub fn out(self: *const @This(), comptime notify_or_request: var) ![]const u8 {
+        pub fn out(self: *@This(), notify_or_request: var) ![]const u8 {
             const T = @TypeOf(notify_or_request);
             const is_notify = (T == spec.NotifyOut);
             if (T != spec.RequestOut and !is_notify)
                 @compileError(@typeName(T));
-            const idx = comptime @enumToInt(std.meta.activeTag(notify_or_request));
+            const idx = @enumToInt(std.meta.activeTag(notify_or_request));
 
             var mem = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
             defer mem.deinit();
@@ -83,8 +83,10 @@ pub fn Engine(comptime spec: Spec) type {
             var out_msg = std.json.Value{ .Object = std.json.ObjectMap.init(&mem.allocator) };
             _ = try out_msg.Object.put("jsonrpc", .{ .String = "2.0" });
             _ = try out_msg.Object.put("method", .{ .String = @memberName(T, idx) });
-            _ = try out_msg.Object.put("params", .{ .Null = {} }); // TODO!
-            _ = try out_msg.Object.put("id", .{ .Null = {} }); // TODO!
+            if (is_notify)
+                _ = try out_msg.Object.put("params", try json.marshal(@field(notify_or_request, @memberName(T, idx)))); // TODO!
+            if (!is_notify)
+                _ = try out_msg.Object.put("id", .{ .Null = {} }); // TODO!
 
             if (self.__shared_out_buf.items.len == 0)
                 self.__shared_out_buf = try std.ArrayList(u8).initCapacity(self.mem_alloc_for_arenas, 16 * 1024);
