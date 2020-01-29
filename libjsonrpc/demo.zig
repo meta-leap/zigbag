@@ -1,24 +1,22 @@
 const std = @import("std");
 
 usingnamespace @import("./types.zig");
-const json = @import("./json.zig");
-
-var mem = std.heap.ArenaAllocator.init(std.heap.page_allocator); // outside of `zig test` should of course `defer .deinit()`...
 
 const fmt_ritzy = "\n\n==={}===\n{}\n\n";
+var mem = std.heap.ArenaAllocator.init(std.heap.page_allocator); // outside of `zig test` should of course `defer .deinit()`...
 
 const IncomingRequest = union(enum) {
-    envVarValue: fn (In(String)) Ret(String),
-    neg: fn (In(i64)) Ret(i64),
+    negate: fn (In(i64)) Ret(i64),
     hostName: fn (In(void)) Ret(String),
+    envVarValue: fn (In(String)) Ret(String),
 };
 const OutgoingRequest = union(enum) {
+    pow2: Req(i64, i64),
+    rnd: Req(void, f32),
     add: Req(struct {
         a: i64,
         b: i64,
     }, i64),
-    rnd: Req(void, f32),
-    pow2: Req(i64, i64),
 };
 const IncomingNotification = union(enum) {
     timeInfo: fn (In(TimeInfo)) void,
@@ -48,13 +46,13 @@ test "demo" {
     // that was the setup, now some use-cases!
 
     our_api.on(IncomingNotification{ .timeInfo = on_timeInfo });
-    our_api.on(IncomingRequest{ .neg = on_neg });
+    our_api.on(IncomingRequest{ .negate = on_negate });
     our_api.on(IncomingRequest{ .envVarValue = on_envVarValue });
     our_api.on(IncomingRequest{ .hostName = on_hostName });
 
-    var jsonstr: []const u8 = undefined;
+    var json_out_str: []const u8 = undefined;
 
-    jsonstr = try our_api.out(OutgoingRequest, .rnd, "Our rnd f32 result: ", Req(void, f32){
+    json_out_str = try our_api.out(OutgoingRequest, .rnd, "Our rnd f32 result: ", Req(void, f32){
         .it = {},
         .on = then(struct {
             pub fn then(ctx: String, in: Ret(f32)) anyerror!void {
@@ -62,9 +60,9 @@ test "demo" {
             }
         }),
     });
-    printJson(OutgoingRequest, jsonstr); // in reality, send it over your conn to counterparty
+    printJson(OutgoingRequest, json_out_str); // in reality, send it over your conn to counterparty
 
-    jsonstr = try our_api.out(OutgoingRequest, .pow2, "Our pow2 i64 result: ", Req(i64, i64){
+    json_out_str = try our_api.out(OutgoingRequest, .pow2, "Our pow2 i64 result: ", Req(i64, i64){
         .it = time_now,
         .on = then(struct {
             pub fn then(ctx: String, in: Ret(i64)) anyerror!void {
@@ -72,21 +70,21 @@ test "demo" {
             }
         }),
     });
-    printJson(OutgoingRequest, jsonstr);
+    printJson(OutgoingRequest, json_out_str);
 
-    jsonstr = try our_api.out(OutgoingNotification, .envVarNames, {}, try envVarNames());
-    printJson(OutgoingNotification, jsonstr);
+    json_out_str = try our_api.out(OutgoingNotification, .envVarNames, {}, try envVarNames());
+    printJson(OutgoingNotification, json_out_str);
 }
 
-fn printJson(comptime T: type, jsonstr: []const u8) void {
-    std.debug.warn(fmt_ritzy, .{ @typeName(T), jsonstr });
+fn printJson(comptime T: type, json_bytes: []const u8) void {
+    std.debug.warn(fmt_ritzy, .{ @typeName(T), json_bytes });
 }
 
 fn on_timeInfo(in: In(TimeInfo)) void {
     std.debug.warn(fmt_ritzy, .{ @typeName(IncomingNotification), in.it });
 }
 
-fn on_neg(in: In(i64)) Ret(i64) {
+fn on_negate(in: In(i64)) Ret(i64) {
     return .{ .ok = -in.it };
 }
 
