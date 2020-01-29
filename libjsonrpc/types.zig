@@ -3,17 +3,17 @@ const std = @import("std");
 pub const String = []const u8;
 
 pub const Spec = struct {
-    ReqId: type,
+    newReqId: fn () anyerror!std.json.Value,
     RequestIn: type,
     RequestOut: type,
     NotifyIn: type,
     NotifyOut: type,
 };
 
-pub fn Req(comptime TParam: type, comptime TRet: type) type {
+pub fn Req(comptime TParam: type, comptime TRet: type, comptime TCtx: type) type {
     return struct {
-        it: TParam = undefined,
-        then: i64,
+        it: TParam,
+        then: fn (TCtx, Ret(TRet)) void,
     };
 }
 
@@ -24,7 +24,7 @@ pub fn In(comptime T: type) type {
     };
 }
 
-pub fn Out(comptime T: type) type {
+pub fn Ret(comptime T: type) type {
     return union(enum) {
         ok: T,
         err: ResponseError,

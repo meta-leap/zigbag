@@ -82,11 +82,13 @@ pub fn Engine(comptime spec: Spec) type {
             const method_member_name = @memberName(T, idx);
             var out_msg = std.json.Value{ .Object = std.json.ObjectMap.init(&mem.allocator) };
             _ = try out_msg.Object.put("jsonrpc", .{ .String = "2.0" });
-            if (is_notify)
-                _ = try out_msg.Object.put("params", try json.marshal(&mem, payload)); // TODO!
-            if (!is_notify)
-                _ = try out_msg.Object.put("id", .{ .Null = {} }); // TODO!
             _ = try out_msg.Object.put("method", .{ .String = method_member_name });
+            if (!is_notify)
+                _ = try out_msg.Object.put("id", try spec.newReqId());
+            if (is_notify and @TypeOf(payload) != void)
+                _ = try out_msg.Object.put("params", try json.marshal(&mem, payload))
+            else if ((!is_notify) and @TypeOf(payload.it) != void)
+                _ = try out_msg.Object.put("params", try json.marshal(&mem, payload.it));
 
             if (self.__shared_out_buf.items.len == 0)
                 self.__shared_out_buf = try std.ArrayList(u8).initCapacity(self.mem_alloc_for_arenas, 16 * 1024);
