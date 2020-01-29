@@ -1,7 +1,7 @@
 const std = @import("std");
 
 pub fn build(bld: *std.build.Builder) void {
-    const mode = std.builtin.Mode.Debug; // bld.standardReleaseOptions();
+    const mode = bld.standardReleaseOptions();
 
     const dirname = std.fs.path.basename(bld.build_root);
     const prog = bld.addExecutable(dirname, "main.zig");
