@@ -10,10 +10,14 @@ pub const Spec = struct {
     NotifyOut: type,
 };
 
-pub fn Req(comptime TParam: type, comptime TRet: type, comptime TCtx: type) type {
+pub fn then(comptime TThenableStruct: type) usize {
+    return @ptrToInt(TThenableStruct.then);
+}
+
+pub fn Req(comptime TParam: type, comptime TRet: type) type {
     return struct {
         it: TParam,
-        then: fn (TCtx, Ret(TRet)) void,
+        on: usize, // fn (TCtx, Ret(TRet)) !void,
     };
 }
 

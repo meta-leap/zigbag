@@ -5,30 +5,32 @@ const json = @import("./json.zig");
 
 var mem = std.heap.ArenaAllocator.init(std.heap.page_allocator); // outside of `zig test` should of course `defer .deinit()`...
 
+const fmt_ritzy = "\n\n==={}===\n{}\n\n";
+
+const IncomingRequest = union(enum) {
+    envVarValue: fn (In(String)) Ret(String),
+    neg: fn (In(i64)) Ret(i64),
+    hostName: fn (In(void)) Ret(String),
+};
+const OutgoingRequest = union(enum) {
+    add: Req(struct {
+        a: i64,
+        b: i64,
+    }, i64),
+    rnd: Req(void, f32),
+    pow2: Req(i64, i64),
+};
+const IncomingNotification = union(enum) {
+    timeInfo: fn (In(TimeInfo)) void,
+    shuttingDown: fn (In(void)) void,
+};
+const OutgoingNotification = union(enum) {
+    envVarNames: []String,
+    shoutOut: bool,
+};
+
 test "demo" {
     const time_now = @intCast(i64, std.time.timestamp()); // want something guaranteed to be runtime-not-comptime
-
-    const IncomingRequest = union(enum) {
-        envVarValue: fn (In(String)) Ret(String),
-        neg: fn (In(i64)) Ret(i64),
-        hostName: fn (In(void)) Ret(String),
-    };
-    const OutgoingRequest = union(enum) {
-        add: Req(struct {
-            a: i64,
-            b: i64,
-        }, i64, void),
-        rnd: Req(void, f32, String),
-        pow2: Req(i64, i64, void),
-    };
-    const IncomingNotification = union(enum) {
-        timeInfo: fn (In(TimeInfo)) void,
-        shuttingDown: fn (In(void)) void,
-    };
-    const OutgoingNotification = union(enum) {
-        envVarNames: []String,
-        shoutOut: bool,
-    };
 
     const OurApi = @import("./engine.zig").Engine(Spec{
         .newReqId = nextReqId,
@@ -52,33 +54,36 @@ test "demo" {
 
     var jsonstr: []const u8 = undefined;
 
-    // jsonstr = our_api.out(OutgoingRequest, .pow2, Req(i64, i64){
-    //     .it = time_now,
-    //     .then = .{ .foo = 123 },
-    // }) catch unreachable;
-    // printJson(OutgoingRequest, jsonstr);
-
-    const RndResp = struct {
-        fn then(ctx: String, in: Ret(f32)) void {
-            std.debug.warn("\n\n==={s}===\n{}\n\n", .{ ctx, in });
-        }
-    };
-    jsonstr = our_api.out(OutgoingRequest, .rnd, Req(void, f32, String){
+    jsonstr = try our_api.out(OutgoingRequest, .rnd, "Our rnd f32 result: ", Req(void, f32){
         .it = {},
-        .then = RndResp.then,
-    }) catch unreachable;
+        .on = then(struct {
+            pub fn then(ctx: String, in: Ret(f32)) anyerror!void {
+                std.debug.warn(fmt_ritzy, .{ ctx, in });
+            }
+        }),
+    });
+    printJson(OutgoingRequest, jsonstr); // in reality, send it over your conn to counterparty
+
+    jsonstr = try our_api.out(OutgoingRequest, .pow2, "Our pow2 i64 result: ", Req(i64, i64){
+        .it = time_now,
+        .on = then(struct {
+            pub fn then(ctx: String, in: Ret(i64)) anyerror!void {
+                std.debug.warn(fmt_ritzy, .{ ctx, in });
+            }
+        }),
+    });
     printJson(OutgoingRequest, jsonstr);
 
-    jsonstr = our_api.out(OutgoingNotification, .envVarNames, envVarNames()) catch unreachable;
+    jsonstr = try our_api.out(OutgoingNotification, .envVarNames, {}, try envVarNames());
     printJson(OutgoingNotification, jsonstr);
 }
 
 fn printJson(comptime T: type, jsonstr: []const u8) void {
-    std.debug.warn("\n\n===" ++ @typeName(T) ++ "===\n{}\n\n", .{jsonstr});
+    std.debug.warn(fmt_ritzy, .{ @typeName(T), jsonstr });
 }
 
 fn on_timeInfo(in: In(TimeInfo)) void {
-    std.debug.warn("\n\n===NotifyIn===\nonTimeInfo: start={}, now={}\n\n", .{ in.it.start, in.it.now });
+    std.debug.warn(fmt_ritzy, .{ @typeName(IncomingNotification), in.it });
 }
 
 fn on_neg(in: In(i64)) Ret(i64) {
@@ -102,12 +107,12 @@ fn on_envVarValue(in: In(String)) Ret(String) {
     return .{ .err = .{ .code = 12345, .message = in.it } };
 }
 
-fn envVarNames() []String {
-    var ret = std.ArrayList(String).initCapacity(&mem.allocator, std.os.environ.len) catch unreachable;
+fn envVarNames() ![]String {
+    var ret = try std.ArrayList(String).initCapacity(&mem.allocator, std.os.environ.len);
     for (std.os.environ) |name_value_pair, i| {
         const pair = std.mem.toSlice(u8, std.os.environ[i]);
         if (std.mem.indexOfScalar(u8, pair, '=')) |pos|
-            ret.append(pair[0..pos]) catch unreachable;
+            try ret.append(pair[0..pos]);
     }
     return ret.toOwnedSlice();
 }
@@ -116,7 +121,7 @@ var req_id: isize = 0;
 
 fn nextReqId() !std.json.Value {
     req_id += 1;
-    var buf = try std.Buffer.init(&mem.allocator, "fooya");
+    var buf = try std.Buffer.init(&mem.allocator, "req_id_");
     defer buf.deinit();
     try std.fmt.formatIntValue(req_id, "", std.fmt.FormatOptions{}, &buf, @TypeOf(std.Buffer.append).ReturnType.ErrorSet, std.Buffer.append);
     return std.json.Value{ .String = buf.toOwnedSlice() };

@@ -70,7 +70,7 @@ pub fn Engine(comptime spec: Spec) type {
             //
         }
 
-        pub fn out(self: *@This(), comptime T: type, comptime tag: @TagType(T), payload: @memberType(T, @enumToInt(tag))) ![]const u8 {
+        pub fn out(self: *@This(), comptime T: type, comptime tag: @TagType(T), req_ctx: var, payload: @memberType(T, @enumToInt(tag))) ![]const u8 {
             const is_notify = (T == spec.NotifyOut);
             if (T != spec.RequestOut and !is_notify)
                 @compileError(@typeName(T));
