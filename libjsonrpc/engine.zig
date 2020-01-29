@@ -84,7 +84,7 @@ pub fn Engine(comptime spec: Spec) type {
             _ = try out_msg.Object.put("jsonrpc", .{ .String = "2.0" });
             _ = try out_msg.Object.put("method", .{ .String = @memberName(T, idx) });
             if (is_notify)
-                _ = try out_msg.Object.put("params", try json.marshal(@field(notify_or_request, @memberName(T, idx)))); // TODO!
+                _ = try out_msg.Object.put("params", try json.marshal(&mem, @field(notify_or_request, @memberName(T, idx)))); // TODO!
             if (!is_notify)
                 _ = try out_msg.Object.put("id", .{ .Null = {} }); // TODO!
 

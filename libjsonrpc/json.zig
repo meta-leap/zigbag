@@ -12,13 +12,7 @@ fn unescapeKeyword(comptime field_name: []const u8) []const u8 {
 pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const std.json.Value) ?T {
     const type_id = comptime @typeId(T);
     const type_info = comptime @typeInfo(T);
-    if (T == IntOrString)
-        return switch (from.*) {
-            .Integer => |jint| .{ .int = jint },
-            .String => |jstr| .{ .string = jstr },
-            else => null,
-        }
-    else if (T == String)
+    if (T == String)
         return switch (from.*) {
             .String => |jstr| jstr,
             else => null,
@@ -127,16 +121,11 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
     return null;
 }
 
-pub fn marshal(mem: *std.heap.ArenaAllocator, from: var) !std.json.Value {
+pub fn marshal(mem: *std.heap.ArenaAllocator, from: var) std.mem.Allocator.Error!std.json.Value {
     const T = comptime @TypeOf(from);
     const type_id = comptime @typeId(T);
     const type_info = comptime @typeInfo(T);
-    if (T == IntOrString)
-        return switch (from) {
-            .int => |it| .{ .Integer = it },
-            .string => |it| .{ .String = it },
-        }
-    else if (T == String)
+    if (T == String)
         return std.json.Value{ .String = from }
     else if (type_id == .Bool)
         return std.json.Value{ .Bool = from }
