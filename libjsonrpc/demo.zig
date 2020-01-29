@@ -19,14 +19,15 @@ test "demo" {
             a: i64,
             b: i64,
         }, i64),
-        pow2: Req(i64, i64),
         rnd: Req(void, f32),
+        pow2: Req(i64, i64),
     };
     const IncomingNotification = union(enum) {
         timeInfo: fn (In(TimeInfo)) void,
     };
     const OutgoingNotification = union(enum) {
         envVarNames: []String,
+        shoutOut: bool,
     };
 
     const OurApi = @import("./engine.zig").Engine(Spec{
@@ -42,15 +43,24 @@ test "demo" {
     };
     defer our_api.deinit();
 
+    // that was the setup, now some use-cases!
+
     our_api.on(IncomingNotification{ .timeInfo = on_timeInfo });
     our_api.on(IncomingRequest{ .neg = on_neg });
     our_api.on(IncomingRequest{ .envVarValue = on_envVarValue });
     our_api.on(IncomingRequest{ .hostName = on_hostName });
 
-    var jsonstr = our_api.out(OutgoingNotification{
-        .envVarNames = envVarNames(&mem.allocator),
-    }) catch unreachable;
-    std.debug.warn("\n\n===NotifyOut===\n{}\n\n", .{jsonstr});
+    var jsonstr: []const u8 = undefined;
+
+    jsonstr = our_api.out(OutgoingRequest, .pow2, (Req(i64, i64)){ .then = time_now }) catch unreachable;
+    printJson(OutgoingRequest, jsonstr);
+
+    jsonstr = our_api.out(OutgoingNotification, .envVarNames, envVarNames(&mem.allocator)) catch unreachable;
+    printJson(OutgoingNotification, jsonstr);
+}
+
+fn printJson(comptime T: type, jsonstr: []const u8) void {
+    std.debug.warn("\n\n===" ++ @typeName(T) ++ "===\n{}\n\n", .{jsonstr});
 }
 
 fn on_timeInfo(in: In(TimeInfo)) void {

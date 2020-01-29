@@ -1,7 +1,5 @@
 const std = @import("std");
 
-usingnamespace @import("./types.zig");
-
 /// sadly LSP has "typical prog-lang keyword" field names like `type` and `error`
 fn unescapeKeyword(comptime field_name: []const u8) []const u8 {
     if (field_name.len > 2 and '_' == field_name[field_name.len - 1] and '_' == field_name[field_name.len - 2])
@@ -12,7 +10,7 @@ fn unescapeKeyword(comptime field_name: []const u8) []const u8 {
 pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const std.json.Value) ?T {
     const type_id = comptime @typeId(T);
     const type_info = comptime @typeInfo(T);
-    if (T == String)
+    if (T == []const u8 or T == []u8)
         return switch (from.*) {
             .String => |jstr| jstr,
             else => null,
@@ -51,29 +49,7 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
                 (std.meta.intToEnum(T, @floatToInt(TEnum, jfloat)) catch null),
             else => null,
         };
-    } else if (T == JsonAny)
-        return switch (from.*) {
-            .Null => .{ .object = null },
-            .String => |jstr| .{ .string = jstr },
-            .Bool => |jbool| .{ .boolean = jbool },
-            .Integer => |jint| .{ .int = jint },
-            .Float => |jfloat| .{ .float = jfloat },
-            .Array => |jlist| load_all: {
-                var arr = mem.allocator.alloc(JsonAny, jlist.len) catch unreachable;
-                for (jlist.items[0..jlist.len]) |*item, i|
-                    arr[i] = unmarshal(JsonAny, mem, item) orelse return null;
-                break :load_all .{ .array = &[_]JsonAny{} };
-            },
-            .Object => |jmap| load_all: {
-                var obj = &std.StringHashMap(JsonAny).init(&mem.allocator);
-                obj.initCapacity(@intCast(usize, std.math.ceilPowerOfTwoPromote(usize, jmap.count()))) catch unreachable;
-                var iter = jmap.iterator();
-                while (iter.next()) |item|
-                    _ = obj.put(item.key, unmarshal(JsonAny, mem, &item.value) orelse return null) catch unreachable;
-                break :load_all .{ .array = &[_]JsonAny{} };
-            },
-        }
-    else if (type_id == .Optional) switch (from.*) {
+    } else if (type_id == .Optional) switch (from.*) {
         .Null => return null,
         else => return unmarshal(type_info.Optional.child, mem, from) orelse null,
     } else if (type_id == .Pointer) {
@@ -114,18 +90,15 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
             },
             else => return null,
         }
-    } else {
-        std.debug.warn("TID\t{}\n", .{type_id});
-        unreachable;
-    }
-    return null;
+    } else
+        @compileError("please file an issue to support JSON-unmarshaling into: " ++ @typeName(T));
 }
 
 pub fn marshal(mem: *std.heap.ArenaAllocator, from: var) std.mem.Allocator.Error!std.json.Value {
     const T = comptime @TypeOf(from);
     const type_id = comptime @typeId(T);
     const type_info = comptime @typeInfo(T);
-    if (T == String)
+    if (T == []const u8 or T == []u8)
         return std.json.Value{ .String = from }
     else if (type_id == .Bool)
         return std.json.Value{ .Bool = from }
@@ -174,16 +147,7 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var) std.mem.Allocator.Error
                 try ret.Array.append(try marshal(mem, item));
             return ret;
         }
-    } else if (T == JsonAny)
-        return switch (from) {
-            .string => std.json.Value{ .String = from.string },
-            .boolean => std.json.Value{ .Bool = from.boolean },
-            .int => std.json.Value{ .Integer = from.int },
-            .float => std.json.Value{ .Float = from.float },
-            .array => try marshal(mem, from.array),
-            .object => try marshal(mem, from.object),
-        }
-    else if (type_id == .Union) {
+    } else if (type_id == .Union) {
         comptime var i = @memberCount(T);
         inline while (i > 0) {
             i -= 1;
@@ -193,5 +157,5 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var) std.mem.Allocator.Error
         }
         unreachable;
     } else
-        @compileError("unsupported type: " ++ @typeName(T));
+        @compileError("please file an issue to support JSON-marshaling of: " ++ @typeName(T));
 }

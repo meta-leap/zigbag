@@ -1,15 +1,6 @@
-usingnamespace @import("std");
+const std = @import("std");
 
 pub const String = []const u8;
-
-pub const JsonAny = union(enum) {
-    string: String,
-    boolean: bool,
-    int: i64,
-    float: f64,
-    array: []JsonAny,
-    object: ?*StringHashMap(JsonAny),
-};
 
 pub const Spec = struct {
     ReqId: type,
@@ -22,14 +13,14 @@ pub const Spec = struct {
 pub fn Req(comptime TParam: type, comptime TRet: type) type {
     return struct {
         it: TParam = undefined,
-        then: var,
+        then: i64,
     };
 }
 
 pub fn In(comptime T: type) type {
     return struct {
         it: T,
-        mem: *mem.Allocator,
+        mem: *std.mem.Allocator,
     };
 }
 
@@ -72,5 +63,5 @@ pub const ResponseError = struct {
     /// see `ErrorCodes` enumeration
     code: isize,
     message: String,
-    data: ?JsonAny = null,
+    data: std.json.Value = std.json.Value{ .Null = {} },
 };
