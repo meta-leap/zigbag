@@ -56,14 +56,14 @@ test "demo" {
     our_api.on(IncomingRequest{ .envVarValue = on_envVarValue });
     our_api.on(IncomingRequest{ .hostName = on_hostName });
 
-    json_out_str = try our_api.out(OutgoingRequest, .rnd, "rnd ret: ", Go({}, f32, struct {
+    json_out_str = try our_api.out(OutgoingRequest, .rnd, "rnd ret: ", With({}, struct {
         pub fn then(ctx: String, in: Ret(f32)) anyerror!void {
             std.debug.warn(fmt_ritzy, .{ ctx, in });
         }
     }));
     printJson(OutgoingRequest, json_out_str); // in reality, send it over your conn to counterparty
 
-    json_out_str = try our_api.out(OutgoingRequest, .pow2, "pow2 ret: ", Go(time_now, i64, struct {
+    json_out_str = try our_api.out(OutgoingRequest, .pow2, "pow2 ret: ", With(time_now, struct {
         pub fn then(ctx: String, in: Ret(i64)) anyerror!void {
             std.debug.warn(fmt_ritzy, .{ ctx, in });
         }
@@ -113,13 +113,13 @@ fn envVarNames() ![]String {
     return ret.toOwnedSlice();
 }
 
-var req_id: isize = 0;
-
-fn nextReqId() !std.json.Value {
-    req_id += 1;
-    var buf = try std.Buffer.init(&mem.allocator, "req_id_");
-    defer buf.deinit();
-    try std.fmt.formatIntValue(req_id, "", std.fmt.FormatOptions{}, &buf, @TypeOf(std.Buffer.append).ReturnType.ErrorSet, std.Buffer.append);
+fn nextReqId(owner: *std.mem.Allocator) !std.json.Value {
+    const counter = struct {
+        var req_id: isize = 0;
+    };
+    counter.req_id += 1;
+    var buf = try std.Buffer.init(owner, "demo_req_id_"); // no defer-deinit! would destroy our return value
+    try std.fmt.formatIntValue(counter.req_id, "", std.fmt.FormatOptions{}, &buf, @TypeOf(std.Buffer.append).ReturnType.ErrorSet, std.Buffer.append);
     return std.json.Value{ .String = buf.toOwnedSlice() };
 }
 

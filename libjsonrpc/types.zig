@@ -3,7 +3,7 @@ const std = @import("std");
 pub const String = []const u8;
 
 pub const Spec = struct {
-    newReqId: fn () anyerror!std.json.Value,
+    newReqId: fn (owner: *std.mem.Allocator) anyerror!std.json.Value,
     RequestIn: type,
     RequestOut: type,
     NotifyIn: type,
@@ -19,8 +19,12 @@ pub fn Req(comptime TParam: type, comptime TRet: type) type {
     };
 }
 
-pub fn Go(in: var, comptime TOut: type, comptime TThen: type) Req(@TypeOf(in), TOut) {
-    return Req(@TypeOf(in), TOut){
+fn WithRetType(comptime T: type) type {
+    return @typeInfo(@typeInfo(std.meta.declarationInfo(T, "then").data.Fn.fn_type).Fn.args[1].arg_type.?).Union.fields[0].field_type;
+}
+
+pub fn With(in: var, comptime TThen: type) Req(@TypeOf(in), WithRetType(TThen)) {
+    return Req(@TypeOf(in), WithRetType(TThen)){
         .it = in,
         .on = @ptrToInt(TThen.then),
     };
