@@ -81,8 +81,8 @@ pub fn Engine(comptime spec: Spec) type {
         }
 
         pub fn out(self: *@This(), comptime T: type, comptime tag: @TagType(T), req_ctx: var, payload: @memberType(T, @enumToInt(tag))) ![]const u8 {
-            const is_notify = (T == spec.NotifyOut);
-            comptime std.debug.assert(is_notify or T == spec.RequestOut);
+            const is_request = (T == spec.RequestOut);
+            comptime std.debug.assert(is_request or T == spec.NotifyOut);
 
             var mem_local = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
             defer mem_local.deinit();
@@ -93,11 +93,11 @@ pub fn Engine(comptime spec: Spec) type {
             var out_msg = std.json.Value{ .Object = std.json.ObjectMap.init(&mem_local.allocator) };
             _ = try out_msg.Object.put("jsonrpc", .{ .String = "2.0" });
             _ = try out_msg.Object.put("method", .{ .String = method_member_name });
-            if (is_notify and @TypeOf(payload) != void)
-                _ = try out_msg.Object.put("params", try json.marshal(&mem_local, payload))
-            else if ((!is_notify) and @TypeOf(payload.param) != void)
-                _ = try out_msg.Object.put("params", try json.marshal(&mem_local, payload.param));
-            if (!is_notify) {
+            const param = if (is_request) payload.param else payload;
+            if (@TypeOf(param) != void)
+                _ = try out_msg.Object.put("params", try json.marshal(&mem_local, param));
+
+            if (is_request) {
                 var mem_keep = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
                 const req_id = try spec.newReqId(&mem_keep.allocator);
                 _ = try out_msg.Object.put("id", req_id);
@@ -113,11 +113,11 @@ pub fn Engine(comptime spec: Spec) type {
                     .ptr_fn = payload.then_fn_ptr,
                 });
                 // if (std.mem.eql(u8, "demo_req_id_2", req_id.String)) {
-                //     var handler = @intToPtr(fn (String, Ret(i64)) anyerror!void, payload.on);
-                //     try handler(ctx.*, Ret(i64){ .ok = @intCast(i64, 12345) });
+                //     const then = @intToPtr(fn (String, Ret(i64)) anyerror!void, payload.then_fn_ptr);
+                //     try then(ctx.*, Ret(i64){ .ok = @intCast(i64, 12345) });
                 // } else if (std.mem.eql(u8, "demo_req_id_1", req_id.String)) {
-                //     var handler = @intToPtr(fn (String, Ret(f32)) anyerror!void, payload.on);
-                //     try handler(ctx.*, Ret(f32){ .ok = @floatCast(f32, 123.45) });
+                //     const then = @intToPtr(fn (String, Ret(f32)) anyerror!void, payload.then_fn_ptr);
+                //     try then(ctx.*, Ret(f32){ .ok = @floatCast(f32, 123.45) });
                 // }
             }
 

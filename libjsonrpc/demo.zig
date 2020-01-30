@@ -56,16 +56,16 @@ test "demo" {
     our_api.on(IncomingRequest{ .envVarValue = on_envVarValue });
     our_api.on(IncomingRequest{ .hostName = on_hostName });
 
-    json_out_str = try our_api.out(OutgoingRequest, .rnd, @intCast(i16, 123), With({}, struct {
+    json_out_str = try our_api.out(OutgoingRequest, .rnd, "rnd ret:", With({}, struct {
         pub fn then(ctx: String, in: Ret(f32)) anyerror!void {
-            std.debug.warn(fmt_ritzy, .{ ctx, in });
+            std.debug.warn(fmt_ritzy, .{ ctx, in.ok });
         }
     }));
     printJson(OutgoingRequest, json_out_str); // in reality, send it over your conn to counterparty
 
     json_out_str = try our_api.out(OutgoingRequest, .pow2, "pow2 ret: ", With(time_now, struct {
         pub fn then(ctx: String, in: Ret(i64)) anyerror!void {
-            std.debug.warn(fmt_ritzy, .{ ctx, in });
+            std.debug.warn(fmt_ritzy, .{ ctx, in.ok });
         }
     }));
     printJson(OutgoingRequest, json_out_str);
