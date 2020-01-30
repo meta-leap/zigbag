@@ -23,8 +23,12 @@ pub fn Engine(comptime spec: Spec) type {
         pub fn deinit(self: *const @This()) void {
             if (self.shared_out_buf.capacity() > 0)
                 self.shared_out_buf.deinit();
-            if (self.handlers_responses.capacity() > 0)
+            if (self.handlers_responses.capacity() > 0) {
+                var i: usize = 0;
+                while (i < self.handlers_responses.len) : (i += 1)
+                    self.handlers_responses.items[i].mem_arena.deinit();
                 self.handlers_responses.deinit();
+            }
         }
 
         pub fn on(self: *@This(), comptime handler: var) void {
@@ -78,14 +82,14 @@ pub fn Engine(comptime spec: Spec) type {
 
         pub fn out(self: *@This(), comptime T: type, comptime tag: @TagType(T), req_ctx: var, payload: @memberType(T, @enumToInt(tag))) ![]const u8 {
             const is_notify = (T == spec.NotifyOut);
-            if (T != spec.RequestOut and !is_notify)
-                @compileError(@typeName(T));
-            const idx = @enumToInt(tag);
+            comptime std.debug.assert(is_notify or T == spec.RequestOut);
 
             var mem_local = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
             defer mem_local.deinit();
 
+            const idx = @enumToInt(tag);
             const method_member_name = @memberName(T, idx);
+
             var out_msg = std.json.Value{ .Object = std.json.ObjectMap.init(&mem_local.allocator) };
             _ = try out_msg.Object.put("jsonrpc", .{ .String = "2.0" });
             _ = try out_msg.Object.put("method", .{ .String = method_member_name });
@@ -97,6 +101,7 @@ pub fn Engine(comptime spec: Spec) type {
                 var mem_keep = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
                 const req_id = try spec.newReqId(&mem_keep.allocator);
                 _ = try out_msg.Object.put("id", req_id);
+
                 if (self.handlers_responses.capacity() == 0)
                     self.handlers_responses = try std.ArrayList(ResponseHandler).initCapacity(self.mem_alloc_for_arenas, 8);
                 const ctx = try mem_keep.allocator.create(@TypeOf(req_ctx));
