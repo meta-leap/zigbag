@@ -27,6 +27,10 @@ const OutgoingNotification = union(enum) {
     shoutOut: bool,
 };
 
+test "misc" {
+    std.debug.assert(@import("json.zig").IsHashMapLike(std.StringHashMap(?void)));
+}
+
 test "demo" {
     const time_now = @intCast(i64, std.time.timestamp()); // want something guaranteed to be runtime-not-comptime
 
@@ -44,13 +48,12 @@ test "demo" {
     defer our_api.deinit();
 
     // that was the setup, now some use-cases!
+    var json_out_str: []const u8 = undefined;
 
     our_api.on(IncomingNotification{ .timeInfo = on_timeInfo });
     our_api.on(IncomingRequest{ .negate = on_negate });
     our_api.on(IncomingRequest{ .envVarValue = on_envVarValue });
     our_api.on(IncomingRequest{ .hostName = on_hostName });
-
-    var json_out_str: []const u8 = undefined;
 
     json_out_str = try our_api.out(OutgoingRequest, .rnd, "Our rnd f32 result: ", Req(void, f32){
         .it = {},

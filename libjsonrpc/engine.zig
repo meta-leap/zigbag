@@ -20,14 +20,11 @@ pub fn Engine(comptime spec: Spec) type {
 
         pub fn on(self: *@This(), comptime handler: var) void {
             const T = @TypeOf(handler);
-            if (T != spec.RequestIn and T != spec.NotifyIn)
-                @compileError(@typeName(T));
+            comptime std.debug.assert(T == spec.RequestIn or T == spec.NotifyIn);
 
             const idx = comptime @enumToInt(std.meta.activeTag(handler));
             const fn_ptr = @ptrToInt(@field(handler, @memberName(T, idx)));
             const arr = &(comptime if (T == spec.RequestIn) self.handlers_requests else self.handlers_notifies);
-            if (arr[idx]) |_|
-                @panic("jsonrpc.Engine.on(" ++ @memberName(T, idx) ++ ") already subscribed-to, cannot overwrite existing subscriber");
             arr[idx] = fn_ptr;
         }
 

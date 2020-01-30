@@ -1,10 +1,76 @@
 const std = @import("std");
 
-/// sadly LSP has "typical prog-lang keyword" field names like `type` and `error`
-fn unescapeKeyword(comptime field_name: []const u8) []const u8 {
-    if (field_name.len > 2 and '_' == field_name[field_name.len - 1] and '_' == field_name[field_name.len - 2])
-        return field_name[0 .. field_name.len - 2];
+pub var rewriteZigFieldNameToJsonObjectKey: fn ([]const u8) []const u8 = rewriteZigFieldNameToJsonObjectKeyDont;
+
+fn rewriteZigFieldNameToJsonObjectKeyDont(field_name: []const u8) []const u8 {
     return field_name;
+}
+
+pub fn marshal(mem: *std.heap.ArenaAllocator, from: var) std.mem.Allocator.Error!std.json.Value {
+    const T = comptime @TypeOf(from);
+    const type_id = comptime @typeId(T);
+    const type_info = comptime @typeInfo(T);
+
+    if (T == []const u8 or T == []u8)
+        return std.json.Value{ .String = from }
+    else if (type_id == .Bool)
+        return std.json.Value{ .Bool = from }
+    else if (type_id == .Int or type_id == .ComptimeInt)
+        return std.json.Value{ .Integer = @intCast(i64, from) }
+    else if (type_id == .Float or type_id == .ComptimeFloat)
+        return std.json.Value{ .Float = from }
+    else if (type_id == .Null or type_id == .Void)
+        return std.json.Value{ .Null = .{} }
+    else if (type_id == .Enum)
+        return std.json.Value{ .Integer = @enumToInt(from) }
+    else if (type_id == .Optional)
+        return if (from) |it| try marshal(mem, it) else .{ .Null = .{} }
+    else if (type_id == .Struct) {
+        var ret = std.json.Value{ .Object = std.json.ObjectMap.init(&mem.allocator) };
+        if (IsHashMapLike(T)) {
+            var iter = from.iterator();
+            while (iter.next()) |pair|
+                _ = try ret.Object.put(item.key, item.value);
+        } else {
+            comptime var i = @memberCount(T);
+            inline while (i > 0) {
+                i -= 1;
+                const field_type = @memberType(T, i);
+                const field_name = @memberName(T, i);
+                const field_value = @field(from, field_name);
+                var field_is_null = false;
+                if (comptime (@typeId(field_type) == .Optional))
+                    field_is_null = (field_value == null);
+                if (comptime std.mem.eql(u8, field_name, @typeName(field_type))) {
+                    var obj = try marshal(mem, field_value).Object.iterator();
+                    while (obj.next()) |item|
+                        _ = try ret.Object.put(item.key, item.value);
+                } else if (!field_is_null) {
+                    _ = try ret.Object.put(rewriteZigFieldNameToJsonObjectKey(field_name), try marshal(mem, field_value));
+                }
+            }
+        }
+        return ret;
+    } else if (type_id == .Pointer) {
+        if (type_info.Pointer.size != .Slice)
+            return try marshal(mem, from.*)
+        else {
+            var ret = std.json.Value{ .Array = std.json.Array.init(&mem.allocator) }; // TODO: use initCapacity once zig compiler's "broken LLVM module found" bug goes away
+            for (from) |item|
+                try ret.Array.append(try marshal(mem, item));
+            return ret;
+        }
+    } else if (type_id == .Union) {
+        comptime var i = @memberCount(T);
+        inline while (i > 0) {
+            i -= 1;
+            if (@enumToInt(std.meta.activeTag(from)) == i) {
+                return try marshal(mem, @field(from, @memberName(T, i)));
+            }
+        }
+        unreachable;
+    } else
+        @compileError("please file an issue to support JSON-marshaling of: " ++ @typeName(T));
 }
 
 pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const std.json.Value) ?T {
@@ -78,7 +144,7 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
                         if (unmarshal(field_type, mem, from)) |it|
                             @field(ret, field_name) = it;
                         // else return null; // TODO: compiler segfaults with this currently (January 2020), not an issue until we begin seeing the below stderr print in the wild though
-                    } else if (jmap.getValue(unescapeKeyword(field_name))) |*jval| {
+                    } else if (jmap.getValue(rewriteZigFieldNameToJsonObjectKey(field_name))) |*jval| {
                         if (unmarshal(field_type, mem, jval)) |it|
                             @field(ret, field_name) = it
                         else if (@typeId(field_type) != .Optional)
@@ -94,68 +160,53 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
         @compileError("please file an issue to support JSON-unmarshaling into: " ++ @typeName(T));
 }
 
-pub fn marshal(mem: *std.heap.ArenaAllocator, from: var) std.mem.Allocator.Error!std.json.Value {
-    const T = comptime @TypeOf(from);
-    const type_id = comptime @typeId(T);
-    const type_info = comptime @typeInfo(T);
-    if (T == []const u8 or T == []u8)
-        return std.json.Value{ .String = from }
-    else if (type_id == .Bool)
-        return std.json.Value{ .Bool = from }
-    else if (type_id == .Int or type_id == .ComptimeInt)
-        return std.json.Value{ .Integer = @intCast(i64, from) }
-    else if (type_id == .Float or type_id == .ComptimeFloat)
-        return std.json.Value{ .Float = from }
-    else if (type_id == .Null or type_id == .Void)
-        return std.json.Value{ .Null = .{} }
-    else if (type_id == .Enum)
-        return std.json.Value{ .Integer = @enumToInt(from) }
-    else if (type_id == .Optional)
-        return if (from) |it| try marshal(mem, it) else .{ .Null = .{} }
-    else if (type_id == .Struct) {
-        const is_hash_map = comptime if (std.mem.indexOf(u8, @typeName(T), "ash")) |_| true else false;
-        if (is_hash_map) {
-            std.debug.warn("HASH_MAP:\t{}\n", .{@typeName(T)});
-            return std.json.Value{ .Object = std.json.ObjectMap.init(&mem.allocator) };
-        } else {
-            var ret = std.json.Value{ .Object = std.json.ObjectMap.init(&mem.allocator) };
-            comptime var i = @memberCount(T);
-            inline while (i > 0) {
-                i -= 1;
-                const field_type = @memberType(T, i);
-                const field_name = @memberName(T, i);
-                const field_value = @field(from, field_name);
-                var field_is_null = false;
-                if (comptime (@typeId(field_type) == .Optional))
-                    field_is_null = (field_value == null);
-                if (comptime std.mem.eql(u8, field_name, @typeName(field_type))) {
-                    var obj = try marshal(mem, field_value).Object.iterator();
-                    while (obj.next()) |item|
-                        _ = try ret.Object.put(item.key, item.value);
-                } else if (!field_is_null) {
-                    _ = try ret.Object.put(unescapeKeyword(field_name), try marshal(mem, field_value));
-                }
+pub fn IsHashMapLike(comptime T: type) bool {
+    switch (@typeInfo(T)) {
+        else => {},
+        .Struct => |maybe_hashmap_struct_info| {
+            inline for (maybe_hashmap_struct_info.decls) |decl_in_hashmap| {
+                comptime if (decl_in_hashmap.is_pub and std.mem.eql(u8, "iterator", decl_in_hashmap.name)) {
+                    switch (decl_in_hashmap.data) {
+                        else => {},
+                        .Fn => |fn_decl_hashmap_iterator| {
+                            switch (@typeInfo(fn_decl_hashmap_iterator.return_type)) {
+                                else => {},
+                                .Struct => |maybe_iterator_struct_info| {
+                                    inline for (maybe_iterator_struct_info.decls) |decl_in_iterator| {
+                                        comptime if (decl_in_iterator.is_pub and std.mem.eql(u8, "next", decl_in_iterator.name)) {
+                                            switch (decl_in_iterator.data) {
+                                                else => {},
+                                                .Fn => |fn_decl_iterator_next| {
+                                                    switch (@typeInfo(fn_decl_iterator_next.return_type)) {
+                                                        else => {},
+                                                        .Optional => |iter_ret_opt| {
+                                                            switch (@typeInfo(iter_ret_opt.child)) {
+                                                                else => {},
+                                                                .Pointer => |iter_ret_opt_ptr| {
+                                                                    switch (@typeInfo(iter_ret_opt_ptr.child)) {
+                                                                        else => {},
+                                                                        .Struct => |kv_struct| if (2 == kv_struct.fields.len and
+                                                                            std.mem.eql(u8, "key", kv_struct.fields[0].name) and
+                                                                            std.mem.eql(u8, "value", kv_struct.fields[1].name))
+                                                                        inline for (maybe_hashmap_struct_info.decls) |decl2_in_hashmap|
+                                                                            comptime if (decl2_in_hashmap.is_pub and std.mem.eql(u8, "put", decl2_in_hashmap.name))
+                                                                                return true,
+                                                                    }
+                                                                },
+                                                            }
+                                                        },
+                                                    }
+                                                },
+                                            }
+                                        };
+                                    }
+                                },
+                            }
+                        },
+                    }
+                };
             }
-            return ret;
-        }
-    } else if (type_id == .Pointer) {
-        if (type_info.Pointer.size != .Slice)
-            return try marshal(mem, from.*)
-        else {
-            var ret = std.json.Value{ .Array = std.json.Array.init(&mem.allocator) }; // TODO: use initCapacity once zig compiler's "broken LLVM module found" bug goes away
-            for (from) |item|
-                try ret.Array.append(try marshal(mem, item));
-            return ret;
-        }
-    } else if (type_id == .Union) {
-        comptime var i = @memberCount(T);
-        inline while (i > 0) {
-            i -= 1;
-            if (@enumToInt(std.meta.activeTag(from)) == i) {
-                return try marshal(mem, @field(from, @memberName(T, i)));
-            }
-        }
-        unreachable;
-    } else
-        @compileError("please file an issue to support JSON-marshaling of: " ++ @typeName(T));
+        },
+    }
+    return false;
 }
