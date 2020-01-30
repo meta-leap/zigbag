@@ -25,37 +25,11 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var) std.mem.Allocator.Error
         return std.json.Value{ .Integer = @enumToInt(from) }
     else if (type_id == .Optional)
         return if (from) |it| try marshal(mem, it) else .{ .Null = .{} }
-    else if (type_id == .Struct) {
-        var ret = std.json.Value{ .Object = std.json.ObjectMap.init(&mem.allocator) };
-        if (IsHashMapLike(T)) {
-            var iter = from.iterator();
-            while (iter.next()) |pair|
-                _ = try ret.Object.put(item.key, item.value);
-        } else {
-            comptime var i = @memberCount(T);
-            inline while (i > 0) {
-                i -= 1;
-                const field_type = @memberType(T, i);
-                const field_name = @memberName(T, i);
-                const field_value = @field(from, field_name);
-                var field_is_null = false;
-                if (comptime (@typeId(field_type) == .Optional))
-                    field_is_null = (field_value == null);
-                if (comptime std.mem.eql(u8, field_name, @typeName(field_type))) {
-                    var obj = try marshal(mem, field_value).Object.iterator();
-                    while (obj.next()) |item|
-                        _ = try ret.Object.put(item.key, item.value);
-                } else if (!field_is_null) {
-                    _ = try ret.Object.put(rewriteZigFieldNameToJsonObjectKey(field_name), try marshal(mem, field_value));
-                }
-            }
-        }
-        return ret;
-    } else if (type_id == .Pointer) {
+    else if (type_id == .Pointer) {
         if (type_info.Pointer.size != .Slice)
             return try marshal(mem, from.*)
         else {
-            var ret = std.json.Value{ .Array = std.json.Array.init(&mem.allocator) }; // TODO: use initCapacity once zig compiler's "broken LLVM module found" bug goes away
+            var ret = std.json.Value{ .Array = try std.json.Array.initCapacity(&mem.allocator, from.len) };
             for (from) |item|
                 try ret.Array.append(try marshal(mem, item));
             return ret;
@@ -69,6 +43,28 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var) std.mem.Allocator.Error
             }
         }
         unreachable;
+    } else if (type_id == .Struct) {
+        var ret = std.json.Value{ .Object = std.json.ObjectMap.init(&mem.allocator) };
+        if (isTypeHashMapLikeDuckwise(T)) {
+            var iter = from.iterator();
+            while (iter.next()) |pair|
+                _ = try ret.Object.put(item.key, item.value);
+        } else {
+            comptime var i = @memberCount(T);
+            inline while (i > 0) {
+                i -= 1;
+                const field_type = @memberType(T, i);
+                const field_name = @memberName(T, i);
+                const field_value = @field(from, field_name);
+                if (comptime std.mem.eql(u8, field_name, @typeName(field_type))) {
+                    var obj = try marshal(mem, field_value).Object.iterator();
+                    while (obj.next()) |item|
+                        _ = try ret.Object.put(item.key, item.value);
+                } else if ((comptime (@typeId(field_type) != .Optional)) or (field_value != null))
+                    _ = try ret.Object.put(rewriteZigFieldNameToJsonObjectKey(field_name), try marshal(mem, field_value));
+            }
+        }
+        return ret;
     } else
         @compileError("please file an issue to support JSON-marshaling of: " ++ @typeName(T));
 }
@@ -158,55 +154,4 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
         }
     } else
         @compileError("please file an issue to support JSON-unmarshaling into: " ++ @typeName(T));
-}
-
-pub fn IsHashMapLike(comptime T: type) bool {
-    switch (@typeInfo(T)) {
-        else => {},
-        .Struct => |maybe_hashmap_struct_info| {
-            inline for (maybe_hashmap_struct_info.decls) |decl_in_hashmap| {
-                comptime if (decl_in_hashmap.is_pub and std.mem.eql(u8, "iterator", decl_in_hashmap.name)) {
-                    switch (decl_in_hashmap.data) {
-                        else => {},
-                        .Fn => |fn_decl_hashmap_iterator| {
-                            switch (@typeInfo(fn_decl_hashmap_iterator.return_type)) {
-                                else => {},
-                                .Struct => |maybe_iterator_struct_info| {
-                                    inline for (maybe_iterator_struct_info.decls) |decl_in_iterator| {
-                                        comptime if (decl_in_iterator.is_pub and std.mem.eql(u8, "next", decl_in_iterator.name)) {
-                                            switch (decl_in_iterator.data) {
-                                                else => {},
-                                                .Fn => |fn_decl_iterator_next| {
-                                                    switch (@typeInfo(fn_decl_iterator_next.return_type)) {
-                                                        else => {},
-                                                        .Optional => |iter_ret_opt| {
-                                                            switch (@typeInfo(iter_ret_opt.child)) {
-                                                                else => {},
-                                                                .Pointer => |iter_ret_opt_ptr| {
-                                                                    switch (@typeInfo(iter_ret_opt_ptr.child)) {
-                                                                        else => {},
-                                                                        .Struct => |kv_struct| if (2 == kv_struct.fields.len and
-                                                                            std.mem.eql(u8, "key", kv_struct.fields[0].name) and
-                                                                            std.mem.eql(u8, "value", kv_struct.fields[1].name))
-                                                                        inline for (maybe_hashmap_struct_info.decls) |decl2_in_hashmap|
-                                                                            comptime if (decl2_in_hashmap.is_pub and std.mem.eql(u8, "put", decl2_in_hashmap.name))
-                                                                                return true,
-                                                                    }
-                                                                },
-                                                            }
-                                                        },
-                                                    }
-                                                },
-                                            }
-                                        };
-                                    }
-                                },
-                            }
-                        },
-                    }
-                };
-            }
-        },
-    }
-    return false;
 }

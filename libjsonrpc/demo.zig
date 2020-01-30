@@ -28,7 +28,7 @@ const OutgoingNotification = union(enum) {
 };
 
 test "misc" {
-    std.debug.assert(@import("json.zig").IsHashMapLike(std.StringHashMap(?void)));
+    std.debug.assert(@import("zcomptime.zig").isTypeHashMapLikeDuckwise(std.StringHashMap([][]u8)));
 }
 
 test "demo" {
