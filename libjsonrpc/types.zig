@@ -12,10 +12,10 @@ pub const Spec = struct {
 
 pub fn Req(comptime TParam: type, comptime TRet: type) type {
     return struct {
-        it: TParam,
+        param: TParam,
 
         /// fn (TCtx, Ret(TRet)) !void,
-        on: usize,
+        then_fn_ptr: usize,
     };
 }
 
@@ -24,9 +24,13 @@ fn WithRetType(comptime T: type) type {
 }
 
 pub fn With(in: var, comptime TThen: type) Req(@TypeOf(in), WithRetType(TThen)) {
-    return Req(@TypeOf(in), WithRetType(TThen)){
-        .it = in,
-        .on = @ptrToInt(TThen.then),
+    return WithRet(in, WithRetType(TThen), TThen);
+}
+
+pub fn WithRet(in: var, comptime TRet: type, comptime TThen: type) Req(@TypeOf(in), TRet) {
+    return Req(@TypeOf(in), TRet){
+        .param = in,
+        .then_fn_ptr = @ptrToInt(TThen.then),
     };
 }
 

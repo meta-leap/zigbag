@@ -95,8 +95,8 @@ pub fn Engine(comptime spec: Spec) type {
             _ = try out_msg.Object.put("method", .{ .String = method_member_name });
             if (is_notify and @TypeOf(payload) != void)
                 _ = try out_msg.Object.put("params", try json.marshal(&mem_local, payload))
-            else if ((!is_notify) and @TypeOf(payload.it) != void)
-                _ = try out_msg.Object.put("params", try json.marshal(&mem_local, payload.it));
+            else if ((!is_notify) and @TypeOf(payload.param) != void)
+                _ = try out_msg.Object.put("params", try json.marshal(&mem_local, payload.param));
             if (!is_notify) {
                 var mem_keep = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
                 const req_id = try spec.newReqId(&mem_keep.allocator);
@@ -110,7 +110,7 @@ pub fn Engine(comptime spec: Spec) type {
                     .mem_arena = mem_keep,
                     .req_id = req_id,
                     .ptr_ctx = @ptrToInt(ctx),
-                    .ptr_fn = payload.on,
+                    .ptr_fn = payload.then_fn_ptr,
                 });
                 // if (std.mem.eql(u8, "demo_req_id_2", req_id.String)) {
                 //     var handler = @intToPtr(fn (String, Ret(i64)) anyerror!void, payload.on);

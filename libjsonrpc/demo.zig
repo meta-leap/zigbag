@@ -56,7 +56,7 @@ test "demo" {
     our_api.on(IncomingRequest{ .envVarValue = on_envVarValue });
     our_api.on(IncomingRequest{ .hostName = on_hostName });
 
-    json_out_str = try our_api.out(OutgoingRequest, .rnd, "rnd ret: ", With({}, struct {
+    json_out_str = try our_api.out(OutgoingRequest, .rnd, @intCast(i16, 123), With({}, struct {
         pub fn then(ctx: String, in: Ret(f32)) anyerror!void {
             std.debug.warn(fmt_ritzy, .{ ctx, in });
         }
