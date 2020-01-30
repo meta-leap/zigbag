@@ -5,12 +5,12 @@ usingnamespace @import("./types.zig");
 const fmt_ritzy = "\n\n==={}===\n{}\n\n";
 var mem = std.heap.ArenaAllocator.init(std.heap.page_allocator); // outside of `zig test` should of course `defer .deinit()`...
 
-const IncomingRequest = union(enum) {
-    negate: fn (In(i64)) Ret(i64),
-    hostName: fn (In(void)) Ret(String),
-    envVarValue: fn (In(String)) Ret(String),
+pub const IncomingRequest = union(enum) {
+    negate: fn (Arg(i64)) Ret(i64),
+    hostName: fn (Arg(void)) Ret(String),
+    envVarValue: fn (Arg(String)) Ret(String),
 };
-const OutgoingRequest = union(enum) {
+pub const OutgoingRequest = union(enum) {
     pow2: Req(i64, i64),
     rnd: Req(void, f32),
     add: Req(struct {
@@ -18,11 +18,11 @@ const OutgoingRequest = union(enum) {
         b: i64,
     }, i64),
 };
-const IncomingNotification = union(enum) {
-    timeInfo: fn (In(TimeInfo)) void,
-    shuttingDown: fn (In(void)) void,
+pub const IncomingNotification = union(enum) {
+    timeInfo: fn (Arg(TimeInfo)) void,
+    shuttingDown: fn (Arg(void)) void,
 };
-const OutgoingNotification = union(enum) {
+pub const OutgoingNotification = union(enum) {
     envVarNames: []String,
     shoutOut: bool,
 };
@@ -48,6 +48,7 @@ test "demo" {
     defer our_api.deinit();
 
     // that was the setup, now some use-cases!
+
     var json_out_str: []const u8 = undefined;
 
     our_api.on(IncomingNotification{ .timeInfo = on_timeInfo });
@@ -55,24 +56,18 @@ test "demo" {
     our_api.on(IncomingRequest{ .envVarValue = on_envVarValue });
     our_api.on(IncomingRequest{ .hostName = on_hostName });
 
-    json_out_str = try our_api.out(OutgoingRequest, .rnd, "Our rnd f32 result: ", Req(void, f32){
-        .it = {},
-        .on = then(struct {
-            pub fn then(ctx: String, in: Ret(f32)) anyerror!void {
-                std.debug.warn(fmt_ritzy, .{ ctx, in });
-            }
-        }),
-    });
+    json_out_str = try our_api.out(OutgoingRequest, .rnd, "rnd ret: ", Go({}, f32, struct {
+        pub fn then(ctx: String, in: Ret(f32)) anyerror!void {
+            std.debug.warn(fmt_ritzy, .{ ctx, in });
+        }
+    }));
     printJson(OutgoingRequest, json_out_str); // in reality, send it over your conn to counterparty
 
-    json_out_str = try our_api.out(OutgoingRequest, .pow2, "Our pow2 i64 result: ", Req(i64, i64){
-        .it = time_now,
-        .on = then(struct {
-            pub fn then(ctx: String, in: Ret(i64)) anyerror!void {
-                std.debug.warn(fmt_ritzy, .{ ctx, in });
-            }
-        }),
-    });
+    json_out_str = try our_api.out(OutgoingRequest, .pow2, "pow2 ret: ", Go(time_now, i64, struct {
+        pub fn then(ctx: String, in: Ret(i64)) anyerror!void {
+            std.debug.warn(fmt_ritzy, .{ ctx, in });
+        }
+    }));
     printJson(OutgoingRequest, json_out_str);
 
     json_out_str = try our_api.out(OutgoingNotification, .envVarNames, {}, try envVarNames());
@@ -83,15 +78,15 @@ fn printJson(comptime T: type, json_bytes: []const u8) void {
     std.debug.warn(fmt_ritzy, .{ @typeName(T), json_bytes });
 }
 
-fn on_timeInfo(in: In(TimeInfo)) void {
+fn on_timeInfo(in: Arg(TimeInfo)) void {
     std.debug.warn(fmt_ritzy, .{ @typeName(IncomingNotification), in.it });
 }
 
-fn on_negate(in: In(i64)) Ret(i64) {
+fn on_negate(in: Arg(i64)) Ret(i64) {
     return .{ .ok = -in.it };
 }
 
-fn on_hostName(in: In(void)) Ret(String) {
+fn on_hostName(in: Arg(void)) Ret(String) {
     var buf_hostname: [std.os.HOST_NAME_MAX]u8 = undefined;
     if (std.os.gethostname(&buf_hostname)) |host|
         return .{ .ok = host }
@@ -99,7 +94,7 @@ fn on_hostName(in: In(void)) Ret(String) {
         return .{ .err = .{ .code = 54321, .message = @errorName(err) } };
 }
 
-fn on_envVarValue(in: In(String)) Ret(String) {
+fn on_envVarValue(in: Arg(String)) Ret(String) {
     for (std.os.environ) |name_value_pair, i| {
         const pair = std.mem.toSlice(u8, std.os.environ[i]);
         if (pair.len > in.it.len and std.mem.startsWith(u8, pair, in.it) and pair[in.it.len] == '=')

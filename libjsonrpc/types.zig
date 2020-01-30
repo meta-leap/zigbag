@@ -10,18 +10,23 @@ pub const Spec = struct {
     NotifyOut: type,
 };
 
-pub fn then(comptime TThenableStruct: type) usize {
-    return @ptrToInt(TThenableStruct.then);
-}
-
 pub fn Req(comptime TParam: type, comptime TRet: type) type {
     return struct {
         it: TParam,
-        on: usize, // fn (TCtx, Ret(TRet)) !void,
+
+        /// fn (TCtx, Ret(TRet)) !void,
+        on: usize,
     };
 }
 
-pub fn In(comptime T: type) type {
+pub fn Go(in: var, comptime TOut: type, comptime TThen: type) Req(@TypeOf(in), TOut) {
+    return Req(@TypeOf(in), TOut){
+        .it = in,
+        .on = @ptrToInt(TThen.then),
+    };
+}
+
+pub fn Arg(comptime T: type) type {
     return struct {
         it: T,
         mem: *std.mem.Allocator,
