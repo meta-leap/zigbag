@@ -80,5 +80,5 @@ pub const ResponseError = struct {
     /// see `ErrorCodes` enumeration
     code: isize,
     message: String,
-    data: std.json.Value = std.json.Value{ .Null = {} },
+    data: ?*const std.json.Value = null,
 };

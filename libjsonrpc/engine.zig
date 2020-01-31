@@ -22,6 +22,7 @@ pub fn Engine(comptime spec: Spec) type {
         mem_alloc_for_arenas: *std.mem.Allocator,
         debug_print_outgoings: bool = false,
         debug_print_incomings: bool = true,
+        parse_malformed_inputs_into_null_for_optional_fields: bool = false,
         __: InternalState = InternalState{
             .handlers_notifies = ([_]?usize{null}) ** @memberCount(spec.NotifyIn),
             .handlers_requests = ([_]?usize{null}) ** @memberCount(spec.RequestIn),
@@ -62,31 +63,26 @@ pub fn Engine(comptime spec: Spec) type {
             if (self.debug_print_incomings)
                 std.debug.warn("\n\n>>>>>INCOMING>>>>>{s}<<<<<<<<<<\n\n", .{full_incoming_jsonrpc_msg_payload});
 
-            var json_parser = std.json.Parser.init(&mem_local.allocator, true);
-            var json_tree = try json_parser.parse(full_incoming_jsonrpc_msg_payload);
-            switch (json_tree.root) {
-                else => {},
-                std.json.Value.Object => |*hashmap| {
-                    const msg_id = hashmap.getValue("id");
-                    const msg_name = hashmap.getValue("method");
-                    if (msg_id) |*id_jsonval| {
-                        if (msg_name) |jstr| switch (jstr) {
-                            .String => |method_name| {
-                                // self.__handleIncomingMsg(spec.RequestIn, &mem_local, id, method_name, hashmap.getValue("params"));
-                            },
-                            else => {},
-                        } else if (hashmap.getValue("error")) |jerr| {
-                            std.debug.warn("RESP-ERR\t{}\n", .{jerr}); // TODO: ResponseError
-                        } else {
-                            // self.__handleIncomingMsg(spec.RequestOut, &mem_local, id, null, hashmap.getValue("result"));
-                        }
-                    } else if (msg_name) |jstr| switch (jstr) {
-                        .String => |method_name| {
-                            // self.__handleIncomingMsg(spec.NotifyIn, &mem_local, null, method_name, hashmap.getValue("params"));
-                        },
-                        else => {},
-                    };
-                },
+            var msg_id: ?*std.json.Value = null;
+            var msg_method: ?String = null;
+            var msg_result: ?*std.json.Value = null;
+            var msg_error: ?ResponseError = null;
+            {
+                var json_parser = std.json.Parser.init(&mem_local.allocator, true);
+                var json_tree = try json_parser.parse(full_incoming_jsonrpc_msg_payload);
+                switch (json_tree.root) {
+                    std.json.Value.Object => |*hashmap| {
+                        if (hashmap.getValue("id")) |*jid|
+                            msg_id = jid;
+                        if (hashmap.getValue("method")) |jmethod| switch (jmethod) {
+                            .String => |jstr| msg_method = jstr,
+                            else => return error.MsgMalformedMethod,
+                        };
+                        if (hashmap.getValue("error")) |*jerror|
+                            msg_error = try json.unmarshal(ResponseError, &mem_local, jerror, self.parse_malformed_inputs_into_null_for_optional_fields);
+                    },
+                    else => return error.MsgIsNoJsonObj,
+                }
             }
         }
 

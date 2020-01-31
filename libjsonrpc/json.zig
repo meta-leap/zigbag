@@ -69,63 +69,75 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var) std.mem.Allocator.Error
         @compileError("please file an issue to support JSON-marshaling of: " ++ @typeName(T));
 }
 
-pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const std.json.Value) ?T {
+pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const std.json.Value, set_optionals_null_on_bad_inputs: bool) error{
+    MalformedInput,
+    OutOfMemory,
+}!T {
     const type_id = comptime @typeId(T);
     const type_info = comptime @typeInfo(T);
-    if (T == []const u8 or T == []u8)
+    if (T == *const std.json.Value)
+        return from
+    else if (T == std.json.Value)
+        return from.*
+    else if (T == []const u8 or T == []u8)
         return switch (from.*) {
             .String => |jstr| jstr,
-            else => null,
+            else => error.MalformedInput,
         }
     else if (T == bool)
         return switch (from.*) {
             .Bool => |jbool| jbool,
-            .String => |jstr| if (std.mem.eql(u8, "true", jstr)) true else (if (std.mem.eql(u8, "false", jstr)) false else null),
-            else => null,
+            .String => |jstr| if (std.mem.eql(u8, "true", jstr)) true else (if (std.mem.eql(u8, "false", jstr)) false else error.MalformedInput),
+            else => error.MalformedInput,
         }
     else if (type_id == .Int)
         return switch (from.*) {
             .Integer => |jint| @intCast(T, jint),
             .Float => |jfloat| if (jfloat < @intToFloat(f64, std.math.minInt(T)) or jfloat > @intToFloat(f64, std.math.maxInt(T)))
-                null
+                error.MalformedInput
             else
                 @floatToInt(T, jfloat),
-            .String => |jstr| std.fmt.parseInt(T, jstr, 10) catch null,
-            else => null,
+            .String => |jstr| std.fmt.parseInt(T, jstr, 10) catch error.MalformedInput,
+            else => error.MalformedInput,
         }
     else if (type_id == .Float)
         return switch (from.*) {
             .Float => |jfloat| jfloat,
             .Integer => |jint| @intToFloat(T, jint),
-            .String => |jstr| std.fmt.parseFloat(T, jstr) catch null,
-            else => null,
+            .String => |jstr| std.fmt.parseFloat(T, jstr) catch error.MalformedInput,
+            else => error.MalformedInput,
         }
     else if (type_id == .Enum) {
         const TEnum = std.meta.TagType(T);
         return switch (from.*) {
-            .Integer => |jint| std.meta.intToEnum(T, jint) catch null,
-            .String => |jstr| std.meta.stringToEnum(T, jstr) orelse (if (std.fmt.parseInt(TEnum, jstr, 10)) |i| (std.meta.intToEnum(T, i) catch null) else |_| null),
+            .Integer => |jint| std.meta.intToEnum(T, jint) catch error.MalformedInput,
+            .String => |jstr| std.meta.stringToEnum(T, jstr) orelse (if (std.fmt.parseInt(TEnum, jstr, 10)) |i| (std.meta.intToEnum(T, i) catch error.MalformedInput) else |_| error.MalformedInput),
             .Float => |jfloat| if (jfloat < @intToFloat(f64, std.math.minInt(TEnum)) or jfloat > @intToFloat(f64, std.math.maxInt(TEnum)))
-                null
+                error.MalformedInput
             else
-                (std.meta.intToEnum(T, @floatToInt(TEnum, jfloat)) catch null),
-            else => null,
+                std.meta.intToEnum(T, @floatToInt(TEnum, jfloat)) catch error.MalformedInput,
+            else => error.MalformedInput,
         };
     } else if (type_id == .Optional) switch (from.*) {
         .Null => return null,
-        else => return unmarshal(type_info.Optional.child, mem, from) orelse null,
+        else => if (unmarshal(type_info.Optional.child, mem, from, set_optionals_null_on_bad_inputs)) |ok|
+            return ok
+        else |err| if (err == error.MalformedInput and set_optionals_null_on_bad_inputs)
+            return null
+        else
+            return err,
     } else if (type_id == .Pointer) {
         if (type_info.Pointer.size != .Slice) {
-            const copy = unmarshal(type_info.Pointer.child, mem, from);
-            return @import("./xstd.mem.zig").enHeap(&mem.allocator, copy orelse return null) catch unreachable;
+            const copy = try unmarshal(type_info.Pointer.child, mem, from, set_optionals_null_on_bad_inputs);
+            return try @import("./xstd.mem.zig").enHeap(&mem.allocator, copy);
         } else switch (from.*) {
             .Array => |jarr| {
-                var ret = mem.allocator.alloc(type_info.Pointer.child, jarr.len) catch unreachable;
+                var ret = try mem.allocator.alloc(type_info.Pointer.child, jarr.len);
                 for (jarr.items[0..jarr.len]) |*jval, i|
-                    ret[i] = unmarshal(type_info.Pointer.child, mem, jval) orelse return null;
+                    ret[i] = try unmarshal(type_info.Pointer.child, mem, jval, set_optionals_null_on_bad_inputs);
                 return ret;
             },
-            else => return null,
+            else => return error.MalformedInput,
         }
     } else if (type_id == .Struct) {
         switch (from.*) {
@@ -136,21 +148,14 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
                     i -= 1;
                     const field_name = @memberName(T, i);
                     const field_type = @memberType(T, i);
-                    if (comptime std.mem.eql(u8, field_name, @typeName(field_type))) {
-                        if (unmarshal(field_type, mem, from)) |it|
-                            @field(ret, field_name) = it;
-                        // else return null; // TODO: compiler segfaults with this currently (January 2020), not an issue until we begin seeing the below stderr print in the wild though
-                    } else if (jmap.getValue(rewriteZigFieldNameToJsonObjectKey(field_name))) |*jval| {
-                        if (unmarshal(field_type, mem, jval)) |it|
-                            @field(ret, field_name) = it
-                        else if (@typeId(field_type) != .Optional)
-                        // return null; // TODO: see segfault note above, same here
-                            std.debug.warn("MISSING:\t{}.{}\n", .{ @typeName(T), field_name });
-                    }
+                    if (comptime std.mem.eql(u8, field_name, @typeName(field_type)))
+                        @field(ret, field_name) = try unmarshal(field_type, mem, from, set_optionals_null_on_bad_inputs)
+                    else if (jmap.getValue(rewriteZigFieldNameToJsonObjectKey(field_name))) |*jval|
+                        @field(ret, field_name) = try unmarshal(field_type, mem, jval, set_optionals_null_on_bad_inputs);
                 }
                 return ret;
             },
-            else => return null,
+            else => return error.MalformedInput,
         }
     } else
         @compileError("please file an issue to support JSON-unmarshaling into: " ++ @typeName(T));
