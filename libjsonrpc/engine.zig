@@ -16,6 +16,20 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
         handlers_notifies: [@memberCount(spec.NotifyIn)]?usize,
         handlers_requests: [@memberCount(spec.RequestIn)]?usize,
         handlers_responses: ?std.ArrayList(ResponseAwaiter) = null,
+        fn jsonValueToBytes(self: *@This(), mem: *std.mem.Allocator, json_value: *const std.json.Value, comptime nesting_depth: comptime_int) ![]const u8 {
+            while (true) {
+                if (self.shared_out_buf) |*shared_out_buf| {
+                    var out_to_buf = std.io.SliceOutStream.init(shared_out_buf.items);
+                    if (json_value.dumpStream(&out_to_buf.stream, nesting_depth))
+                        return shared_out_buf.items[0..out_to_buf.pos]
+                    else |err| if (err == error.OutOfSpace)
+                        try shared_out_buf.ensureCapacity(2 * shared_out_buf.capacity())
+                    else
+                        return err;
+                } else
+                    self.shared_out_buf = try std.ArrayList(u8).initCapacity(mem, 16 * 1024);
+            }
+        }
     };
 
     comptime var json_options: json.Options = jsonOptions;
@@ -66,7 +80,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
             arr[idx] = fn_ptr;
         }
 
-        pub fn in(self: *const @This(), full_incoming_jsonrpc_msg_payload: []const u8) !void {
+        pub fn in(self: *@This(), full_incoming_jsonrpc_msg_payload: []const u8) !?[]const u8 {
             var mem_local = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
             defer mem_local.deinit();
             std.debug.warn("\n\n>>>>>INCOMING>>>>>{s}<<<<<<<<<<\n\n", .{full_incoming_jsonrpc_msg_payload});
@@ -122,12 +136,25 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                                 const fn_ptr = @intToPtr(spec_field.field_type, fn_ptr_uint);
                                 fn_ptr(.{ .it = param_val, .mem = &mem_local.allocator });
                             }
-                            return;
+                            return null;
                         };
                     return error.MsgNotifyInUnknownMethod;
                 },
-                .response => {},
-                .request => {},
+
+                .request => {
+                    inline for (@typeInfo(spec.RequestIn).Union.fields) |*spec_field, idx|
+                        if (std.mem.eql(u8, spec_field.name, msg.method)) {
+                            return null;
+                        };
+                    return try self.__.jsonValueToBytes(self.mem_alloc_for_arenas, &(try json.marshal(&mem_local, ResponseError{
+                        .code = @enumToInt(ErrorCodes.MethodNotFound),
+                        .message = msg.method,
+                    }, json_options)), 64);
+                },
+
+                .response => {
+                    return null;
+                },
             }
         }
 
@@ -171,20 +198,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                 //     try then(ctx.*, Ret(f32){ .ok = @floatCast(f32, 123.45) });
                 // }
             }
-
-            while (true) {
-                if (self.__.shared_out_buf) |*shared_out_buf| {
-                    const nesting_depth = 8; // TODO! bah..
-                    var out_to_buf = std.io.SliceOutStream.init(shared_out_buf.items);
-                    if (out_msg.dumpStream(&out_to_buf.stream, nesting_depth))
-                        return shared_out_buf.items[0..out_to_buf.pos]
-                    else |err| if (err == error.OutOfSpace)
-                        try shared_out_buf.ensureCapacity(2 * shared_out_buf.capacity())
-                    else
-                        return err;
-                } else
-                    self.__.shared_out_buf = try std.ArrayList(u8).initCapacity(self.mem_alloc_for_arenas, 16 * 1024);
-            }
+            return self.__.jsonValueToBytes(self.mem_alloc_for_arenas, &out_msg, 64); // TODO! nesting-depth..
         }
     };
 }

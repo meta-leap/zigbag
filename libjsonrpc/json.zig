@@ -25,21 +25,25 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var, comptime options: Optio
     const type_id = comptime @typeId(T);
     const type_info = comptime @typeInfo(T);
 
+    if (T == std.json.Value)
+        return from;
+    if (T == *std.json.Value or T == *const std.json.Value)
+        return from.*;
     if (T == []const u8 or T == []u8)
-        return std.json.Value{ .String = from }
-    else if (type_id == .Bool)
-        return std.json.Value{ .Bool = from }
-    else if (type_id == .Int or type_id == .ComptimeInt)
-        return std.json.Value{ .Integer = @intCast(i64, from) }
-    else if (type_id == .Float or type_id == .ComptimeFloat)
-        return std.json.Value{ .Float = from }
-    else if (type_id == .Null or type_id == .Void)
-        return std.json.Value{ .Null = .{} }
-    else if (type_id == .Enum)
-        return std.json.Value{ .Integer = @enumToInt(from) }
-    else if (type_id == .Optional)
-        return if (from) |it| try marshal(mem, it, options) else .{ .Null = .{} }
-    else if (type_id == .Pointer) {
+        return std.json.Value{ .String = from };
+    if (type_id == .Bool)
+        return std.json.Value{ .Bool = from };
+    if (type_id == .Int or type_id == .ComptimeInt)
+        return std.json.Value{ .Integer = @intCast(i64, from) };
+    if (type_id == .Float or type_id == .ComptimeFloat)
+        return std.json.Value{ .Float = from };
+    if (type_id == .Null or type_id == .Void)
+        return std.json.Value{ .Null = .{} };
+    if (type_id == .Enum)
+        return std.json.Value{ .Integer = @enumToInt(from) };
+    if (type_id == .Optional)
+        return if (from) |it| try marshal(mem, it, options) else .{ .Null = .{} };
+    if (type_id == .Pointer) {
         if (type_info.Pointer.size != .Slice)
             return try marshal(mem, from.*, options)
         else {
@@ -48,7 +52,8 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var, comptime options: Optio
                 try ret.Array.append(try marshal(mem, item, options));
             return ret;
         }
-    } else if (type_id == .Union) {
+    }
+    if (type_id == .Union) {
         comptime var i = @memberCount(T);
         inline while (i > 0) {
             i -= 1;
@@ -57,12 +62,13 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var, comptime options: Optio
             }
         }
         unreachable;
-    } else if (type_id == .Struct) {
+    }
+    if (type_id == .Struct) {
         var ret = std.json.Value{ .Object = std.json.ObjectMap.init(&mem.allocator) };
-        if (isTypeHashMapLikeDuckwise(T)) {
+        if (comptime @import("./zcomptime.zig").isTypeHashMapLikeDuckwise(T)) {
             var iter = from.iterator();
             while (iter.next()) |pair|
-                _ = try ret.Object.put(item.key, item.value);
+                _ = try ret.Object.put(pair.key, pair.value);
         } else {
             comptime var i = @memberCount(T);
             inline while (i > 0) {
@@ -70,17 +76,23 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var, comptime options: Optio
                 const field_type = @memberType(T, i);
                 const field_name = @memberName(T, i);
                 const field_value = @field(from, field_name);
+                if (comptime std.mem.indexOf(u8, @typeName(field_type), "ArrayList")) |_|
+                    @compileError(@typeName(T) ++ "." ++ field_name);
+                if (comptime std.mem.indexOf(u8, field_name, "lloc")) |_|
+                    @compileError(@typeName(T) ++ "." ++ field_name);
+                if (comptime (@typeId(field_type) == .Fn))
+                    @compileError(@typeName(T) ++ "." ++ field_name);
                 if (comptime (@typeId(field_type) == .Struct and options.isStructFieldEmbedded.?(T, field_name, field_type))) {
                     var obj = try marshal(mem, field_value, options).Object.iterator();
-                    while (obj.next()) |item|
-                        _ = try ret.Object.put(item.key, item.value);
+                    while (obj.next()) |pair|
+                        _ = try ret.Object.put(pair.key, pair.value);
                 } else if ((comptime (@typeId(field_type) != .Optional)) or (field_value != null))
                     _ = try ret.Object.put(options.rewriteZigFieldNameToJsonObjectKey.?(T, field_name), try marshal(mem, field_value, options));
             }
         }
         return ret;
-    } else
-        @compileError("please file an issue to support JSON-marshaling of: " ++ @typeName(T));
+    }
+    @compileError("please file an issue to support JSON-marshaling of: " ++ @typeName(T));
 }
 
 pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const std.json.Value, comptime options: Options) error{
@@ -160,23 +172,27 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
     } else if (type_id == .Struct) {
         switch (from.*) {
             .Object => |*jmap| {
-                var ret = @import("./xstd.mem.zig").zeroed(T);
-                comptime var i = @memberCount(T);
-                inline while (i > 0) {
-                    i -= 1;
-                    const field_name = @memberName(T, i);
-                    const field_type = @memberType(T, i);
-                    const field_embed = comptime (@typeId(field_type) == .Struct and options.isStructFieldEmbedded.?(T, field_name, field_type));
-                    if (field_embed)
-                        @field(ret, field_name) = try unmarshal(field_type, mem, from, options)
-                    else if (jmap.getValue(options.rewriteZigFieldNameToJsonObjectKey.?(T, field_name))) |*jval|
-                        @field(ret, field_name) = try unmarshal(field_type, mem, jval, options)
-                    else if (options.err_on_missing_nonvoid_nonoptional_fields) {
-                        // return error.MissingField;
-                        // TODO! above err-return currently segfaults the compiler, check back again later with future Zig releases.
+                if (comptime @import("./zcomptime.zig").isTypeHashMapLikeDuckwise(T))
+                    @compileError("TODO: support JSON-unmarshaling into: " ++ @typeName(T))
+                else {
+                    var ret = @import("./xstd.mem.zig").zeroed(T);
+                    comptime var i = @memberCount(T);
+                    inline while (i > 0) {
+                        i -= 1;
+                        const field_name = @memberName(T, i);
+                        const field_type = @memberType(T, i);
+                        const field_embed = comptime (@typeId(field_type) == .Struct and options.isStructFieldEmbedded.?(T, field_name, field_type));
+                        if (field_embed)
+                            @field(ret, field_name) = try unmarshal(field_type, mem, from, options)
+                        else if (jmap.getValue(options.rewriteZigFieldNameToJsonObjectKey.?(T, field_name))) |*jval|
+                            @field(ret, field_name) = try unmarshal(field_type, mem, jval, options)
+                        else if (options.err_on_missing_nonvoid_nonoptional_fields) {
+                            // return error.MissingField;
+                            // TODO! above err-return currently segfaults the compiler, check back again later with future Zig releases.
+                        }
                     }
+                    return ret;
                 }
-                return ret;
             },
             else => return error.MalformedInput,
         }

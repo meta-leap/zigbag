@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const ErrorCodes = enum(i32) {
+pub const ErrorCodes = enum(isize) {
     ParseError = -32700,
     InvalidRequest = -32600,
     MethodNotFound = -32601,
