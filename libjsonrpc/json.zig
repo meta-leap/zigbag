@@ -73,21 +73,25 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var, comptime options: Optio
             comptime var i = @memberCount(T);
             inline while (i > 0) {
                 i -= 1;
-                const field_type = @memberType(T, i);
+                comptime const field_type = comptime @memberType(T, i);
+                comptime const field_type_id = comptime @typeId(field_type);
                 const field_name = @memberName(T, i);
                 const field_value = @field(from, field_name);
                 if (comptime std.mem.indexOf(u8, @typeName(field_type), "ArrayList")) |_|
                     @compileError(@typeName(T) ++ "." ++ field_name);
                 if (comptime std.mem.indexOf(u8, field_name, "lloc")) |_|
                     @compileError(@typeName(T) ++ "." ++ field_name);
-                if (comptime (@typeId(field_type) == .Fn))
+                if (comptime (field_type_id == .Fn))
                     @compileError(@typeName(T) ++ "." ++ field_name);
-                if (comptime (@typeId(field_type) == .Struct and options.isStructFieldEmbedded.?(T, field_name, field_type))) {
+                if (comptime (field_type_id == .Struct and options.isStructFieldEmbedded.?(T, field_name, field_type))) {
                     var obj = try marshal(mem, field_value, options).Object.iterator();
                     while (obj.next()) |pair|
                         _ = try ret.Object.put(pair.key, pair.value);
-                } else if ((comptime (@typeId(field_type) != .Optional)) or (field_value != null))
-                    _ = try ret.Object.put(options.rewriteZigFieldNameToJsonObjectKey.?(T, field_name), try marshal(mem, field_value, options));
+                } else {
+                    var should = if (field_type_id == .Optional) (field_value != null) else true;
+                    if (should) // TODO! check "control flow attempts to use compile-time variable at runtime" if above var is either const or directly inside the `if`-cond
+                        _ = try ret.Object.put(options.rewriteZigFieldNameToJsonObjectKey.?(T, field_name), try marshal(mem, field_value, options));
+                }
             }
         }
         return ret;

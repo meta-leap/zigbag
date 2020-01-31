@@ -69,10 +69,12 @@ pub fn Ret(comptime T: type) type {
             with_result: struct {
                 id: @TypeOf(id),
                 result: T,
+                jsonrpc: String = "2.0",
             },
             with_error: struct {
                 id: @TypeOf(id),
                 error__: ResponseError,
+                jsonrpc: String = "2.0",
             },
         } {
             return switch (self) {

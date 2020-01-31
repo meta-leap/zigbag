@@ -7,7 +7,7 @@ var mem = std.heap.ArenaAllocator.init(std.heap.page_allocator); // outside of `
 
 pub const IncomingRequest = union(enum) {
     negate: fn (Arg(i64)) Ret(i64),
-    hostName: fn (Arg(void)) Ret(String),
+    hostName: fn (Arg(void)) Ret([]u8),
     envVarValue: fn (Arg(String)) Ret(String),
 };
 pub const OutgoingRequest = union(enum) {
@@ -47,7 +47,7 @@ test "demo" {
     };
     defer our_api.deinit();
 
-    // that was the setup, now some use-cases!
+    // that was the SETUP, now some USAGE!
 
     var json_out_str: []const u8 = undefined;
 
@@ -57,19 +57,23 @@ test "demo" {
     our_api.on(IncomingRequest{ .hostName = on_hostName });
 
     if (try our_api.in("{ \"id\": 1, \"method\": \"envVarValue\", \"params\": \"GOPATH\" }")) |json_out|
-        printJson(ResponseError, json_out);
+        printJson(null, json_out);
+    if (try our_api.in("{ \"id\": 2, \"method\": \"hostName\" }")) |json_out|
+        printJson(null, json_out);
+    if (try our_api.in("{ \"id\": 3, \"method\": \"negate\", \"params\": 42.42 }")) |json_out|
+        printJson(null, json_out);
 
     json_out_str = try our_api.request(.rnd, "rnd gave:", With({}, struct {
         pub fn then(ctx: String, in: Ret(f32)) anyerror!void {
             std.debug.warn(fmt_ritzy, .{ ctx, in.ok });
         }
     }));
-    printJson(OutgoingRequest, json_out_str); // in reality, send it over your conn to counterparty
+    printJson(OutgoingRequest, json_out_str);
 
     if (try our_api.in("{ \"method\": \"timeInfo\", \"params\": {\"start\": 123, \"now\": 321} }")) |json_out|
-        printJson(ResponseError, json_out);
+        printJson(null, json_out);
     if (try our_api.in("{ \"id\": \"demo_req_id_1\", \"result\": 123.456 }")) |json_out|
-        printJson(ResponseError, json_out);
+        printJson(null, json_out);
 
     json_out_str = try our_api.request(.pow2, "pow2 gave: ", With(time_now, struct {
         pub fn then(ctx: String, in: Ret(i64)) anyerror!void {
@@ -82,13 +86,13 @@ test "demo" {
     printJson(OutgoingNotification, json_out_str);
 
     if (try our_api.in("{ \"id\": \"demo_req_id_2\", \"error\": { \"code\": 12345, \"message\": \"No pow2 to you!\" } }")) |json_out|
-        printJson(ResponseError, json_out);
+        printJson(null, json_out);
     if (try our_api.in("{ \"method\": \"shuttingDown\" }")) |json_out|
-        printJson(ResponseError, json_out);
+        printJson(null, json_out);
 }
 
-fn printJson(comptime T: type, json_bytes: []const u8) void {
-    std.debug.warn(fmt_ritzy, .{ @typeName(T), json_bytes });
+fn printJson(comptime T: ?type, json_bytes: []const u8) void {
+    std.debug.warn(fmt_ritzy, .{ if (T) |It| @typeName(It) else "OutgoingResponse", json_bytes });
 }
 
 fn nextReqId(owner: *std.mem.Allocator) !std.json.Value {
@@ -114,11 +118,11 @@ fn on_negate(in: Arg(i64)) Ret(i64) {
     return .{ .ok = -in.it };
 }
 
-fn on_hostName(in: Arg(void)) Ret(String) {
+fn on_hostName(in: Arg(void)) Ret([]u8) {
     var buf_hostname: [std.os.HOST_NAME_MAX]u8 = undefined;
-    if (std.os.gethostname(&buf_hostname)) |host|
-        return .{ .ok = host }
-    else |err|
+    if (std.os.gethostname(&buf_hostname)) |host| {
+        return .{ .ok = std.mem.dupe(in.mem, u8, host) catch unreachable }; // TODO!
+    } else |err|
         return .{ .err = .{ .code = 54321, .message = @errorName(err) } };
 }
 

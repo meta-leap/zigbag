@@ -80,84 +80,6 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
             arr[idx] = fn_ptr;
         }
 
-        pub fn in(self: *@This(), full_incoming_jsonrpc_msg_payload: []const u8) !?[]const u8 {
-            var mem_local = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
-            defer mem_local.deinit();
-            std.debug.warn("\n\n>>>>>INCOMING>>>>>{s}<<<<<<<<<<\n\n", .{full_incoming_jsonrpc_msg_payload});
-
-            var msg: struct {
-                id: ?*std.json.Value = null,
-                method: String = undefined,
-                params: ?*std.json.Value = null,
-                result_ok: ?*std.json.Value = null,
-                result_err: ?ResponseError = null,
-                kind: json.Options.MsgKind = undefined,
-            } = .{};
-
-            switch ((try std.json.Parser.init(&mem_local.allocator, true).parse(full_incoming_jsonrpc_msg_payload)).root) {
-                else => return error.MsgIsNoJsonObj,
-                std.json.Value.Object => |*hashmap| {
-                    if (hashmap.getValue("id")) |*jid|
-                        msg.id = jid;
-                    if (hashmap.getValue("error")) |*jerror|
-                        msg.result_err = try json.unmarshal(ResponseError, &mem_local, jerror, json_options);
-                    if (hashmap.getValue("result")) |*jresult|
-                        msg.result_ok = jresult;
-                    if (hashmap.getValue("params")) |*jparams|
-                        msg.params = jparams;
-
-                    msg.kind = if (msg.id) |_|
-                        (if (msg.result_err == null and msg.result_ok == null) json.Options.MsgKind.request else json.Options.MsgKind.response)
-                    else
-                        json.Options.MsgKind.notification;
-
-                    if (hashmap.getValue("method")) |jmethod| switch (jmethod) {
-                        .String => |jstr| msg.method = json_options.rewriteJsonRpcMethodNameToUnionFieldName.?(msg.kind, jstr),
-                        else => return error.MsgMalformedMethodField,
-                    } else if (msg.kind != json.Options.MsgKind.response)
-                        return error.MsgMissingMethodField;
-                },
-            }
-
-            switch (msg.kind) {
-                .notification => {
-                    inline for (@typeInfo(spec.NotifyIn).Union.fields) |*spec_field, idx|
-                        if (std.mem.eql(u8, spec_field.name, msg.method)) {
-                            if (self.__.handlers_notifies[idx]) |fn_ptr_uint| {
-                                const param_type = @typeInfo(@typeInfo(spec_field.field_type).Fn.args[0].arg_type.?).Struct.fields[0].field_type;
-                                const param_val: param_type = if (msg.params) |params|
-                                    try json.unmarshal(param_type, &mem_local, params, json_options)
-                                else if (param_type == void)
-                                    ({})
-                                else if (@typeId(param_type) == .Optional)
-                                    null
-                                else
-                                    return error.MsgNotifyInParamsMissing;
-                                const fn_ptr = @intToPtr(spec_field.field_type, fn_ptr_uint);
-                                fn_ptr(.{ .it = param_val, .mem = &mem_local.allocator });
-                            }
-                            return null;
-                        };
-                    return error.MsgNotifyInUnknownMethod;
-                },
-
-                .request => {
-                    inline for (@typeInfo(spec.RequestIn).Union.fields) |*spec_field, idx|
-                        if (std.mem.eql(u8, spec_field.name, msg.method)) {
-                            return null;
-                        };
-                    return try self.__.jsonValueToBytes(self.mem_alloc_for_arenas, &(try json.marshal(&mem_local, ResponseError{
-                        .code = @enumToInt(ErrorCodes.MethodNotFound),
-                        .message = msg.method,
-                    }, json_options)), 64);
-                },
-
-                .response => {
-                    return null;
-                },
-            }
-        }
-
         pub fn out(self: *@This(), comptime T: type, comptime tag: @TagType(T), req_ctx: var, payload: @memberType(T, @enumToInt(tag))) ![]const u8 {
             const is_request = (T == spec.RequestOut);
             comptime std.debug.assert(is_request or T == spec.NotifyOut);
@@ -199,6 +121,102 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                 // }
             }
             return self.__.jsonValueToBytes(self.mem_alloc_for_arenas, &out_msg, 64); // TODO! nesting-depth..
+        }
+
+        pub fn in(self: *@This(), full_incoming_jsonrpc_msg_payload: []const u8) !?[]const u8 {
+            var mem_local = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
+            defer mem_local.deinit();
+            // std.debug.warn("\n\n>>>>>INCOMING>>>>>{s}<<<<<<<<<<\n\n", .{full_incoming_jsonrpc_msg_payload});
+
+            var msg: struct {
+                id: ?*std.json.Value = null,
+                method: String = undefined,
+                params: ?*std.json.Value = null,
+                result_ok: ?*std.json.Value = null,
+                result_err: ?ResponseError = null,
+                kind: json.Options.MsgKind = undefined,
+            } = .{};
+
+            // first: gather what we can for `msg`
+            switch ((try std.json.Parser.init(&mem_local.allocator, true).parse(full_incoming_jsonrpc_msg_payload)).root) {
+                else => return error.MsgIsNoJsonObj,
+                std.json.Value.Object => |*hashmap| {
+                    if (hashmap.getValue("id")) |*jid|
+                        msg.id = jid;
+                    if (hashmap.getValue("error")) |*jerror|
+                        msg.result_err = try json.unmarshal(ResponseError, &mem_local, jerror, json_options);
+                    if (hashmap.getValue("result")) |*jresult|
+                        msg.result_ok = jresult;
+                    if (hashmap.getValue("params")) |*jparams|
+                        msg.params = jparams;
+
+                    msg.kind = if (msg.id) |_|
+                        (if (msg.result_err == null and msg.result_ok == null) json.Options.MsgKind.request else json.Options.MsgKind.response)
+                    else
+                        json.Options.MsgKind.notification;
+
+                    if (hashmap.getValue("method")) |jmethod| switch (jmethod) {
+                        .String => |jstr| msg.method = json_options.rewriteJsonRpcMethodNameToUnionFieldName.?(msg.kind, jstr),
+                        else => return error.MsgMalformedMethodField,
+                    } else if (msg.kind != json.Options.MsgKind.response)
+                        return error.MsgMissingMethodField;
+                },
+            }
+
+            // next: *now* handle `msg`
+            switch (msg.kind) {
+                .notification => {
+                    inline for (@typeInfo(spec.NotifyIn).Union.fields) |*spec_field, idx|
+                        if (std.mem.eql(u8, spec_field.name, msg.method)) {
+                            if (self.__.handlers_notifies[idx]) |fn_ptr_uint| {
+                                const fn_type = @typeInfo(spec_field.field_type).Fn;
+                                const param_type = @typeInfo(fn_type.args[0].arg_type.?).Struct.fields[0].field_type;
+                                const param_val: param_type = if (msg.params) |params|
+                                    try json.unmarshal(param_type, &mem_local, params, json_options)
+                                else if (param_type == void)
+                                    undefined
+                                else if (@typeId(param_type) == .Optional)
+                                    null
+                                else
+                                    return error.MsgNotifyInParamsMissing;
+                                const fn_ptr = @intToPtr(spec_field.field_type, fn_ptr_uint);
+                                fn_ptr(.{ .it = param_val, .mem = &mem_local.allocator });
+                            }
+                            return null;
+                        };
+                    return error.MsgNotifyInUnknownMethod;
+                },
+
+                .request => {
+                    inline for (@typeInfo(spec.RequestIn).Union.fields) |*spec_field, idx|
+                        if (std.mem.eql(u8, spec_field.name, msg.method)) {
+                            if (self.__.handlers_requests[idx]) |fn_ptr_uint| {
+                                const fn_type = @typeInfo(spec_field.field_type).Fn;
+                                const param_type = @typeInfo(fn_type.args[0].arg_type.?).Struct.fields[0].field_type;
+                                const param_val: param_type = if (msg.params) |params|
+                                    try json.unmarshal(param_type, &mem_local, params, json_options)
+                                else if (param_type == void)
+                                    undefined
+                                else if (@typeId(param_type) == .Optional)
+                                    null
+                                else
+                                    return error.MsgRequestInParamsMissing;
+                                const fn_ptr = @intToPtr(spec_field.field_type, fn_ptr_uint);
+                                const fn_ret = fn_ptr(.{ .it = param_val, .mem = &mem_local.allocator });
+                                return try self.__.jsonValueToBytes(self.mem_alloc_for_arenas, &(try json.marshal(&mem_local, fn_ret.toJsonRpcResponse(msg.id), json_options)), 64);
+                            }
+                            return null;
+                        };
+                    return try self.__.jsonValueToBytes(self.mem_alloc_for_arenas, &(try json.marshal(&mem_local, ResponseError{
+                        .code = @enumToInt(ErrorCodes.MethodNotFound),
+                        .message = msg.method,
+                    }, json_options)), 64);
+                },
+
+                .response => {
+                    return null;
+                },
+            }
         }
     };
 }
