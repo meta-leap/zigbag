@@ -56,6 +56,8 @@ test "demo" {
     our_api.on(IncomingRequest{ .envVarValue = on_envVarValue });
     our_api.on(IncomingRequest{ .hostName = on_hostName });
 
+    try our_api.in("{ \"id\": 1, \"method\": \"envVarValue\", \"params\": \"GOPATH\" }");
+
     json_out_str = try our_api.request(.rnd, "rnd gave:", With({}, struct {
         pub fn then(ctx: String, in: Ret(f32)) anyerror!void {
             std.debug.warn(fmt_ritzy, .{ ctx, in.ok });
@@ -63,7 +65,8 @@ test "demo" {
     }));
     printJson(OutgoingRequest, json_out_str); // in reality, send it over your conn to counterparty
 
-    try our_api.in("{ \"method\": \"shuttingDown\" }");
+    try our_api.in("{ \"method\": \"timeInfo\", \"params\": {\"start\": 123, \"now\": 321} }");
+    try our_api.in("{ \"id\": \"demo_req_id_1\", \"result\": 123.456 }");
 
     json_out_str = try our_api.request(.pow2, "pow2 gave: ", With(time_now, struct {
         pub fn then(ctx: String, in: Ret(i64)) anyerror!void {
@@ -75,7 +78,8 @@ test "demo" {
     json_out_str = try our_api.notify(.envVarNames, {}, try envVarNames());
     printJson(OutgoingNotification, json_out_str);
 
-    // try our_api.in("{ \"method\": \"timeInfo\", \"params\": {\"start\": 123, \"now\": 321} }");
+    try our_api.in("{ \"id\": \"demo_req_id_2\", \"error\": { \"code\": 12345, \"message\": \"No pow2 to you!\" } }");
+    try our_api.in("{ \"method\": \"shuttingDown\" }");
 }
 
 fn printJson(comptime T: type, json_bytes: []const u8) void {

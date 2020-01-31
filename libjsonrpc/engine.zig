@@ -24,6 +24,10 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
             json_options.isStructFieldEmbedded = defaultIsFieldEmbedded;
         if (json_options.rewriteZigFieldNameToJsonObjectKey == null)
             json_options.rewriteZigFieldNameToJsonObjectKey = defaultRewriteZigFieldNameToJsonObjectKey;
+        if (json_options.rewriteUnionFieldNameToJsonRpcMethodName == null)
+            json_options.rewriteUnionFieldNameToJsonRpcMethodName = defaultRewriteUnionFieldNameToJsonRpcMethodName;
+        if (json_options.rewriteJsonRpcMethodNameToUnionFieldName == null)
+            json_options.rewriteJsonRpcMethodNameToUnionFieldName = defaultRewriteJsonRpcMethodNameToUnionFieldName;
     }
 
     return struct {
@@ -71,23 +75,34 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
             var msg_method: ?String = null;
             var msg_result: ?*std.json.Value = null;
             var msg_error: ?ResponseError = null;
+            var msg_kind: json.Options.MsgKind = undefined;
             {
                 var json_parser = std.json.Parser.init(&mem_local.allocator, true);
                 var json_tree = try json_parser.parse(full_incoming_jsonrpc_msg_payload);
                 switch (json_tree.root) {
+                    else => return error.MsgIsNoJsonObj,
                     std.json.Value.Object => |*hashmap| {
                         if (hashmap.getValue("id")) |*jid|
                             msg_id = jid;
-                        if (hashmap.getValue("method")) |jmethod| switch (jmethod) {
-                            .String => |jstr| msg_method = jstr,
-                            else => return error.MsgMalformedMethod,
-                        };
                         if (hashmap.getValue("error")) |*jerror|
                             msg_error = try json.unmarshal(ResponseError, &mem_local, jerror, json_options);
+                        if (hashmap.getValue("result")) |*jresult|
+                            msg_result = jresult;
+
+                        msg_kind = if (msg_id) |_|
+                            (if (msg_error == null and msg_result == null) json.Options.MsgKind.request else json.Options.MsgKind.response)
+                        else
+                            json.Options.MsgKind.notification;
+
+                        if (hashmap.getValue("method")) |jmethod| switch (jmethod) {
+                            .String => |jstr| msg_method = json_options.rewriteJsonRpcMethodNameToUnionFieldName.?(msg_kind, jstr),
+                            else => return error.MsgMalformedMethodField,
+                        } else if (msg_kind != json.Options.MsgKind.response)
+                            return error.MsgMissingMethodField;
                     },
-                    else => return error.MsgIsNoJsonObj,
                 }
             }
+            std.debug.warn("\nKIND\t{}\n", .{@tagName(msg_kind)});
         }
 
         pub fn out(self: *@This(), comptime T: type, comptime tag: @TagType(T), req_ctx: var, payload: @memberType(T, @enumToInt(tag))) ![]const u8 {
@@ -105,7 +120,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
             if (@TypeOf(param) != void)
                 _ = try out_msg.Object.put("params", try json.marshal(&mem_local, param, json_options));
             _ = try out_msg.Object.put("jsonrpc", .{ .String = "2.0" });
-            _ = try out_msg.Object.put("method", .{ .String = method_member_name });
+            _ = try out_msg.Object.put("method", .{ .String = json_options.rewriteUnionFieldNameToJsonRpcMethodName.?(T, idx, method_member_name) });
 
             if (is_request) {
                 var mem_keep = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
@@ -153,5 +168,13 @@ fn defaultRewriteZigFieldNameToJsonObjectKey(comptime TStruct: type, field_name:
 }
 
 fn defaultIsFieldEmbedded(comptime struct_type: type, field_name: []const u8, comptime field_type: type) bool {
-    return false;
+    return false; // std.mem.eql(u8, field_name, @typeName(field_type));
+}
+
+fn defaultRewriteUnionFieldNameToJsonRpcMethodName(comptime union_type: type, comptime union_field_idx: comptime_int, comptime union_field_name: []const u8) []const u8 {
+    return union_field_name;
+}
+
+fn defaultRewriteJsonRpcMethodNameToUnionFieldName(incoming_kind: json.Options.MsgKind, jsonrpc_method_name: []const u8) []const u8 {
+    return jsonrpc_method_name;
 }

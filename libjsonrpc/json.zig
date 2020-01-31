@@ -1,31 +1,23 @@
 const std = @import("std");
 
 pub const Options = struct {
+    set_optionals_null_on_bad_inputs: bool = false,
     isStructFieldEmbedded: ?fn (type, []const u8, type) bool = null,
     rewriteZigFieldNameToJsonObjectKey: ?fn (type, []const u8) []const u8 = null,
-    set_optionals_null_on_bad_inputs: bool = false,
+    rewriteUnionFieldNameToJsonRpcMethodName: ?fn (type, comptime_int, []const u8) []const u8 = null,
+    rewriteJsonRpcMethodNameToUnionFieldName: ?fn (MsgKind, []const u8) []const u8 = null,
+
+    pub const MsgKind = enum {
+        notification,
+        request,
+        response,
+    };
 };
 
 pub const StructDesc = struct {
     name: []const u8,
     info: std.builtin.TypeInfo.Struct,
 };
-
-pub var rewriteZigFieldNameToJsonObjectKey: fn ([]const u8) []const u8 = defaultRewriteZigFieldNameToJsonObjectKey;
-pub var isFieldEmbedded: fn (StructDesc, []const u8, StructDesc) bool = defaultIsFieldEmbedded;
-pub var isFieldEmbedded2: fn (comptime type, []const u8, comptime type) bool = defaultIsFieldEmbedded2;
-
-fn defaultRewriteZigFieldNameToJsonObjectKey(field_name: []const u8) []const u8 {
-    return field_name;
-}
-
-fn defaultIsFieldEmbedded(comptime struct_type: StructDesc, field_name: []const u8, comptime field_type: StructDesc) bool {
-    return std.mem.eql(u8, field_name, field_type.name);
-}
-
-fn defaultIsFieldEmbedded2(comptime struct_type: type, field_name: []const u8, comptime field_type: type) bool {
-    return std.mem.eql(u8, field_name, @typeName(field_type));
-}
 
 pub fn marshal(mem: *std.heap.ArenaAllocator, from: var, comptime options: Options) std.mem.Allocator.Error!std.json.Value {
     const T = comptime @TypeOf(from);
@@ -77,12 +69,12 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var, comptime options: Optio
                 const field_type = @memberType(T, i);
                 const field_name = @memberName(T, i);
                 const field_value = @field(from, field_name);
-                if (comptime (@typeId(field_type) == .Struct and options.isStructFieldEmbedded(T, field_name, field_type))) {
+                if (comptime (@typeId(field_type) == .Struct and options.isStructFieldEmbedded.?(T, field_name, field_type))) {
                     var obj = try marshal(mem, field_value, options).Object.iterator();
                     while (obj.next()) |item|
                         _ = try ret.Object.put(item.key, item.value);
                 } else if ((comptime (@typeId(field_type) != .Optional)) or (field_value != null))
-                    _ = try ret.Object.put(rewriteZigFieldNameToJsonObjectKey(field_name), try marshal(mem, field_value, options));
+                    _ = try ret.Object.put(options.rewriteZigFieldNameToJsonObjectKey.?(T, field_name), try marshal(mem, field_value, options));
             }
         }
         return ret;
@@ -169,9 +161,9 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
                     i -= 1;
                     const field_name = @memberName(T, i);
                     const field_type = @memberType(T, i);
-                    if (comptime (@typeId(field_type) == .Struct and options.isStructFieldEmbedded(T, field_name, field_type)))
+                    if (comptime (@typeId(field_type) == .Struct and options.isStructFieldEmbedded.?(T, field_name, field_type)))
                         @field(ret, field_name) = try unmarshal(field_type, mem, from, options)
-                    else if (jmap.getValue(rewriteZigFieldNameToJsonObjectKey(field_name))) |*jval|
+                    else if (jmap.getValue(options.rewriteZigFieldNameToJsonObjectKey.?(T, field_name))) |*jval|
                         @field(ret, field_name) = try unmarshal(field_type, mem, jval, options);
                 }
                 return ret;
