@@ -75,7 +75,7 @@ test "demo" {
     }));
     printJson(OutgoingRequest, json_out_str);
 
-    json_out_str = try our_api.notify(.envVarNames, {}, try envVarNames());
+    json_out_str = try our_api.notify(.envVarNames, {}, try demo_envVarNames());
     printJson(OutgoingNotification, json_out_str);
 
     try our_api.in("{ \"id\": \"demo_req_id_2\", \"error\": { \"code\": 12345, \"message\": \"No pow2 to you!\" } }");
@@ -85,6 +85,21 @@ test "demo" {
 fn printJson(comptime T: type, json_bytes: []const u8) void {
     std.debug.warn(fmt_ritzy, .{ @typeName(T), json_bytes });
 }
+
+fn nextReqId(owner: *std.mem.Allocator) !std.json.Value {
+    const counter = struct {
+        var req_id: isize = 0;
+    };
+    counter.req_id += 1;
+    var buf = try std.Buffer.init(owner, "demo_req_id_"); // no defer-deinit! would destroy our return value
+    try std.fmt.formatIntValue(counter.req_id, "", std.fmt.FormatOptions{}, &buf, @TypeOf(std.Buffer.append).ReturnType.ErrorSet, std.Buffer.append);
+    return std.json.Value{ .String = buf.toOwnedSlice() };
+}
+
+const TimeInfo = struct {
+    start: i64,
+    now: ?u64,
+};
 
 fn on_timeInfo(in: Arg(TimeInfo)) void {
     std.debug.warn(fmt_ritzy, .{ @typeName(IncomingNotification), in.it });
@@ -111,7 +126,7 @@ fn on_envVarValue(in: Arg(String)) Ret(String) {
     return .{ .err = .{ .code = 12345, .message = in.it } };
 }
 
-fn envVarNames() ![]String {
+fn demo_envVarNames() ![]String {
     var ret = try std.ArrayList(String).initCapacity(&mem.allocator, std.os.environ.len);
     for (std.os.environ) |name_value_pair, i| {
         const pair = std.mem.toSlice(u8, std.os.environ[i]);
@@ -120,18 +135,3 @@ fn envVarNames() ![]String {
     }
     return ret.toOwnedSlice();
 }
-
-fn nextReqId(owner: *std.mem.Allocator) !std.json.Value {
-    const counter = struct {
-        var req_id: isize = 0;
-    };
-    counter.req_id += 1;
-    var buf = try std.Buffer.init(owner, "demo_req_id_"); // no defer-deinit! would destroy our return value
-    try std.fmt.formatIntValue(counter.req_id, "", std.fmt.FormatOptions{}, &buf, @TypeOf(std.Buffer.append).ReturnType.ErrorSet, std.Buffer.append);
-    return std.json.Value{ .String = buf.toOwnedSlice() };
-}
-
-const TimeInfo = struct {
-    start: i64,
-    now: u64,
-};

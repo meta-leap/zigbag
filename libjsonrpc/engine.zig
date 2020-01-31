@@ -71,38 +71,64 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
             defer mem_local.deinit();
             std.debug.warn("\n\n>>>>>INCOMING>>>>>{s}<<<<<<<<<<\n\n", .{full_incoming_jsonrpc_msg_payload});
 
-            var msg_id: ?*std.json.Value = null;
-            var msg_method: ?String = null;
-            var msg_result: ?*std.json.Value = null;
-            var msg_error: ?ResponseError = null;
-            var msg_kind: json.Options.MsgKind = undefined;
-            {
-                var json_parser = std.json.Parser.init(&mem_local.allocator, true);
-                var json_tree = try json_parser.parse(full_incoming_jsonrpc_msg_payload);
-                switch (json_tree.root) {
-                    else => return error.MsgIsNoJsonObj,
-                    std.json.Value.Object => |*hashmap| {
-                        if (hashmap.getValue("id")) |*jid|
-                            msg_id = jid;
-                        if (hashmap.getValue("error")) |*jerror|
-                            msg_error = try json.unmarshal(ResponseError, &mem_local, jerror, json_options);
-                        if (hashmap.getValue("result")) |*jresult|
-                            msg_result = jresult;
+            var msg: struct {
+                id: ?*std.json.Value = null,
+                method: String = undefined,
+                params: ?*std.json.Value = null,
+                result_ok: ?*std.json.Value = null,
+                result_err: ?ResponseError = null,
+                kind: json.Options.MsgKind = undefined,
+            } = .{};
 
-                        msg_kind = if (msg_id) |_|
-                            (if (msg_error == null and msg_result == null) json.Options.MsgKind.request else json.Options.MsgKind.response)
-                        else
-                            json.Options.MsgKind.notification;
+            switch ((try std.json.Parser.init(&mem_local.allocator, true).parse(full_incoming_jsonrpc_msg_payload)).root) {
+                else => return error.MsgIsNoJsonObj,
+                std.json.Value.Object => |*hashmap| {
+                    if (hashmap.getValue("id")) |*jid|
+                        msg.id = jid;
+                    if (hashmap.getValue("error")) |*jerror|
+                        msg.result_err = try json.unmarshal(ResponseError, &mem_local, jerror, json_options);
+                    if (hashmap.getValue("result")) |*jresult|
+                        msg.result_ok = jresult;
+                    if (hashmap.getValue("params")) |*jparams|
+                        msg.params = jparams;
 
-                        if (hashmap.getValue("method")) |jmethod| switch (jmethod) {
-                            .String => |jstr| msg_method = json_options.rewriteJsonRpcMethodNameToUnionFieldName.?(msg_kind, jstr),
-                            else => return error.MsgMalformedMethodField,
-                        } else if (msg_kind != json.Options.MsgKind.response)
-                            return error.MsgMissingMethodField;
-                    },
-                }
+                    msg.kind = if (msg.id) |_|
+                        (if (msg.result_err == null and msg.result_ok == null) json.Options.MsgKind.request else json.Options.MsgKind.response)
+                    else
+                        json.Options.MsgKind.notification;
+
+                    if (hashmap.getValue("method")) |jmethod| switch (jmethod) {
+                        .String => |jstr| msg.method = json_options.rewriteJsonRpcMethodNameToUnionFieldName.?(msg.kind, jstr),
+                        else => return error.MsgMalformedMethodField,
+                    } else if (msg.kind != json.Options.MsgKind.response)
+                        return error.MsgMissingMethodField;
+                },
             }
-            std.debug.warn("\nKIND\t{}\n", .{@tagName(msg_kind)});
+
+            switch (msg.kind) {
+                .notification => {
+                    inline for (@typeInfo(spec.NotifyIn).Union.fields) |*spec_field, idx|
+                        if (std.mem.eql(u8, spec_field.name, msg.method)) {
+                            if (self.__.handlers_notifies[idx]) |fn_ptr_uint| {
+                                const param_type = @typeInfo(@typeInfo(spec_field.field_type).Fn.args[0].arg_type.?).Struct.fields[0].field_type;
+                                const param_val: param_type = if (msg.params) |params|
+                                    try json.unmarshal(param_type, &mem_local, params, json_options)
+                                else if (param_type == void)
+                                    ({})
+                                else if (@typeId(param_type) == .Optional)
+                                    null
+                                else
+                                    return error.MsgNotifyInParamsMissing;
+                                const fn_ptr = @intToPtr(spec_field.field_type, fn_ptr_uint);
+                                fn_ptr(.{ .it = param_val, .mem = &mem_local.allocator });
+                            }
+                            return;
+                        };
+                    return error.MsgNotifyInUnknownMethod;
+                },
+                .response => {},
+                .request => {},
+            }
         }
 
         pub fn out(self: *@This(), comptime T: type, comptime tag: @TagType(T), req_ctx: var, payload: @memberType(T, @enumToInt(tag))) ![]const u8 {

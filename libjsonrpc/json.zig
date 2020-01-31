@@ -2,6 +2,7 @@ const std = @import("std");
 
 pub const Options = struct {
     set_optionals_null_on_bad_inputs: bool = false,
+    err_on_missing_nonvoid_nonoptional_fields: bool = true,
     isStructFieldEmbedded: ?fn (type, []const u8, type) bool = null,
     rewriteZigFieldNameToJsonObjectKey: ?fn (type, []const u8) []const u8 = null,
     rewriteUnionFieldNameToJsonRpcMethodName: ?fn (type, comptime_int, []const u8) []const u8 = null,
@@ -83,6 +84,7 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var, comptime options: Optio
 }
 
 pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const std.json.Value, comptime options: Options) error{
+    MissingField,
     MalformedInput,
     OutOfMemory,
 }!T {
@@ -131,6 +133,9 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
                 std.meta.intToEnum(T, @floatToInt(TEnum, jfloat)) catch error.MalformedInput,
             else => error.MalformedInput,
         };
+    } else if (type_id == .Void) switch (from.*) {
+        .Null => return {},
+        else => return error.MalformedInput,
     } else if (type_id == .Optional) switch (from.*) {
         .Null => return null,
         else => if (unmarshal(type_info.Optional.child, mem, from, options)) |ok|
@@ -161,10 +166,15 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
                     i -= 1;
                     const field_name = @memberName(T, i);
                     const field_type = @memberType(T, i);
-                    if (comptime (@typeId(field_type) == .Struct and options.isStructFieldEmbedded.?(T, field_name, field_type)))
+                    const field_embed = comptime (@typeId(field_type) == .Struct and options.isStructFieldEmbedded.?(T, field_name, field_type));
+                    if (field_embed)
                         @field(ret, field_name) = try unmarshal(field_type, mem, from, options)
                     else if (jmap.getValue(options.rewriteZigFieldNameToJsonObjectKey.?(T, field_name))) |*jval|
-                        @field(ret, field_name) = try unmarshal(field_type, mem, jval, options);
+                        @field(ret, field_name) = try unmarshal(field_type, mem, jval, options)
+                    else if (options.err_on_missing_nonvoid_nonoptional_fields) {
+                        // return error.MissingField;
+                        // TODO! above err-return currently segfaults the compiler, check back again later with future Zig releases.
+                    }
                 }
                 return ret;
             },
