@@ -28,7 +28,7 @@ pub const OutgoingNotification = union(enum) {
 };
 
 test "misc" {
-    std.debug.assert(@import("zcomptime.zig").isTypeHashMapLikeDuckwise(std.StringHashMap([][]u8)));
+    std.testing.expect(@import("zcomptime.zig").isTypeHashMapLikeDuckwise(std.StringHashMap([][]u8)));
 }
 
 test "demo" {
@@ -40,7 +40,7 @@ test "demo" {
         .RequestOut = OutgoingRequest,
         .NotifyIn = IncomingNotification,
         .NotifyOut = OutgoingNotification,
-    });
+    }, @import("./json.zig").Options{});
 
     var our_api = OurApi{
         .mem_alloc_for_arenas = std.heap.page_allocator,

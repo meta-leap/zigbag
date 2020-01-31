@@ -4,9 +4,9 @@ usingnamespace @import("./types.zig");
 
 const json = @import("./json.zig");
 
-pub fn Engine(comptime spec: Spec) type {
+pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
     const InternalState = struct {
-        const ResponseHandler = struct {
+        const ResponseAwaiter = struct {
             mem_arena: std.heap.ArenaAllocator,
             req_id: @TypeOf(spec.newReqId).ReturnType,
             ptr_ctx: usize,
@@ -15,14 +15,19 @@ pub fn Engine(comptime spec: Spec) type {
         shared_out_buf: ?std.ArrayList(u8) = null,
         handlers_notifies: [@memberCount(spec.NotifyIn)]?usize,
         handlers_requests: [@memberCount(spec.RequestIn)]?usize,
-        handlers_responses: ?std.ArrayList(ResponseHandler) = null,
+        handlers_responses: ?std.ArrayList(ResponseAwaiter) = null,
     };
+
+    comptime var json_options: json.Options = jsonOptions;
+    comptime {
+        if (json_options.isStructFieldEmbedded == null)
+            json_options.isStructFieldEmbedded = defaultIsFieldEmbedded;
+        if (json_options.rewriteZigFieldNameToJsonObjectKey == null)
+            json_options.rewriteZigFieldNameToJsonObjectKey = defaultRewriteZigFieldNameToJsonObjectKey;
+    }
 
     return struct {
         mem_alloc_for_arenas: *std.mem.Allocator,
-        debug_print_outgoings: bool = false,
-        debug_print_incomings: bool = true,
-        parse_malformed_inputs_into_null_for_optional_fields: bool = false,
         __: InternalState = InternalState{
             .handlers_notifies = ([_]?usize{null}) ** @memberCount(spec.NotifyIn),
             .handlers_requests = ([_]?usize{null}) ** @memberCount(spec.RequestIn),
@@ -60,8 +65,7 @@ pub fn Engine(comptime spec: Spec) type {
         pub fn in(self: *const @This(), full_incoming_jsonrpc_msg_payload: []const u8) !void {
             var mem_local = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
             defer mem_local.deinit();
-            if (self.debug_print_incomings)
-                std.debug.warn("\n\n>>>>>INCOMING>>>>>{s}<<<<<<<<<<\n\n", .{full_incoming_jsonrpc_msg_payload});
+            std.debug.warn("\n\n>>>>>INCOMING>>>>>{s}<<<<<<<<<<\n\n", .{full_incoming_jsonrpc_msg_payload});
 
             var msg_id: ?*std.json.Value = null;
             var msg_method: ?String = null;
@@ -79,7 +83,7 @@ pub fn Engine(comptime spec: Spec) type {
                             else => return error.MsgMalformedMethod,
                         };
                         if (hashmap.getValue("error")) |*jerror|
-                            msg_error = try json.unmarshal(ResponseError, &mem_local, jerror, self.parse_malformed_inputs_into_null_for_optional_fields);
+                            msg_error = try json.unmarshal(ResponseError, &mem_local, jerror, json_options);
                     },
                     else => return error.MsgIsNoJsonObj,
                 }
@@ -99,7 +103,7 @@ pub fn Engine(comptime spec: Spec) type {
             var out_msg = std.json.Value{ .Object = std.json.ObjectMap.init(&mem_local.allocator) };
             const param = if (is_request) payload.param else payload;
             if (@TypeOf(param) != void)
-                _ = try out_msg.Object.put("params", try json.marshal(&mem_local, param));
+                _ = try out_msg.Object.put("params", try json.marshal(&mem_local, param, json_options));
             _ = try out_msg.Object.put("jsonrpc", .{ .String = "2.0" });
             _ = try out_msg.Object.put("method", .{ .String = method_member_name });
 
@@ -109,10 +113,10 @@ pub fn Engine(comptime spec: Spec) type {
                 _ = try out_msg.Object.put("id", req_id);
 
                 if (self.__.handlers_responses == null)
-                    self.__.handlers_responses = try std.ArrayList(InternalState.ResponseHandler).initCapacity(self.mem_alloc_for_arenas, 8);
+                    self.__.handlers_responses = try std.ArrayList(InternalState.ResponseAwaiter).initCapacity(self.mem_alloc_for_arenas, 8);
                 const ctx = try mem_keep.allocator.create(@TypeOf(req_ctx));
                 ctx.* = req_ctx;
-                try self.__.handlers_responses.?.append(InternalState.ResponseHandler{
+                try self.__.handlers_responses.?.append(InternalState.ResponseAwaiter{
                     .mem_arena = mem_keep,
                     .req_id = req_id,
                     .ptr_ctx = @ptrToInt(ctx),
@@ -142,4 +146,12 @@ pub fn Engine(comptime spec: Spec) type {
             }
         }
     };
+}
+
+fn defaultRewriteZigFieldNameToJsonObjectKey(comptime TStruct: type, field_name: []const u8) []const u8 {
+    return field_name;
+}
+
+fn defaultIsFieldEmbedded(comptime struct_type: type, field_name: []const u8, comptime field_type: type) bool {
+    return false;
 }

@@ -1,5 +1,24 @@
 const std = @import("std");
 
+pub const ErrorCodes = enum(i32) {
+    ParseError = -32700,
+    InvalidRequest = -32600,
+    MethodNotFound = -32601,
+    InvalidParams = -32602,
+    InternalError = -32603,
+    serverErrorStart = -32099,
+    serverErrorEnd = -32000,
+    ServerNotInitialized = -32002,
+    UnknownErrorCode = -32001,
+};
+
+pub const ResponseError = struct {
+    /// see `ErrorCodes` enumeration
+    code: isize,
+    message: String,
+    data: ?*const std.json.Value = null,
+};
+
 pub const String = []const u8;
 
 pub const Spec = struct {
@@ -63,22 +82,3 @@ pub fn Ret(comptime T: type) type {
         }
     };
 }
-
-pub const ErrorCodes = enum(i32) {
-    ParseError = -32700,
-    InvalidRequest = -32600,
-    MethodNotFound = -32601,
-    InvalidParams = -32602,
-    InternalError = -32603,
-    serverErrorStart = -32099,
-    serverErrorEnd = -32000,
-    ServerNotInitialized = -32002,
-    UnknownErrorCode = -32001,
-};
-
-pub const ResponseError = struct {
-    /// see `ErrorCodes` enumeration
-    code: isize,
-    message: String,
-    data: ?*const std.json.Value = null,
-};

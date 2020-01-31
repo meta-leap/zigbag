@@ -1,12 +1,33 @@
 const std = @import("std");
 
-pub var rewriteZigFieldNameToJsonObjectKey: fn ([]const u8) []const u8 = rewriteZigFieldNameToJsonObjectKeyDont;
+pub const Options = struct {
+    isStructFieldEmbedded: ?fn (type, []const u8, type) bool = null,
+    rewriteZigFieldNameToJsonObjectKey: ?fn (type, []const u8) []const u8 = null,
+    set_optionals_null_on_bad_inputs: bool = false,
+};
 
-fn rewriteZigFieldNameToJsonObjectKeyDont(field_name: []const u8) []const u8 {
+pub const StructDesc = struct {
+    name: []const u8,
+    info: std.builtin.TypeInfo.Struct,
+};
+
+pub var rewriteZigFieldNameToJsonObjectKey: fn ([]const u8) []const u8 = defaultRewriteZigFieldNameToJsonObjectKey;
+pub var isFieldEmbedded: fn (StructDesc, []const u8, StructDesc) bool = defaultIsFieldEmbedded;
+pub var isFieldEmbedded2: fn (comptime type, []const u8, comptime type) bool = defaultIsFieldEmbedded2;
+
+fn defaultRewriteZigFieldNameToJsonObjectKey(field_name: []const u8) []const u8 {
     return field_name;
 }
 
-pub fn marshal(mem: *std.heap.ArenaAllocator, from: var) std.mem.Allocator.Error!std.json.Value {
+fn defaultIsFieldEmbedded(comptime struct_type: StructDesc, field_name: []const u8, comptime field_type: StructDesc) bool {
+    return std.mem.eql(u8, field_name, field_type.name);
+}
+
+fn defaultIsFieldEmbedded2(comptime struct_type: type, field_name: []const u8, comptime field_type: type) bool {
+    return std.mem.eql(u8, field_name, @typeName(field_type));
+}
+
+pub fn marshal(mem: *std.heap.ArenaAllocator, from: var, comptime options: Options) std.mem.Allocator.Error!std.json.Value {
     const T = comptime @TypeOf(from);
     const type_id = comptime @typeId(T);
     const type_info = comptime @typeInfo(T);
@@ -24,14 +45,14 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var) std.mem.Allocator.Error
     else if (type_id == .Enum)
         return std.json.Value{ .Integer = @enumToInt(from) }
     else if (type_id == .Optional)
-        return if (from) |it| try marshal(mem, it) else .{ .Null = .{} }
+        return if (from) |it| try marshal(mem, it, options) else .{ .Null = .{} }
     else if (type_id == .Pointer) {
         if (type_info.Pointer.size != .Slice)
-            return try marshal(mem, from.*)
+            return try marshal(mem, from.*, options)
         else {
             var ret = std.json.Value{ .Array = try std.json.Array.initCapacity(&mem.allocator, from.len) };
             for (from) |item|
-                try ret.Array.append(try marshal(mem, item));
+                try ret.Array.append(try marshal(mem, item, options));
             return ret;
         }
     } else if (type_id == .Union) {
@@ -39,7 +60,7 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var) std.mem.Allocator.Error
         inline while (i > 0) {
             i -= 1;
             if (@enumToInt(std.meta.activeTag(from)) == i) {
-                return try marshal(mem, @field(from, @memberName(T, i)));
+                return try marshal(mem, @field(from, @memberName(T, i)), options);
             }
         }
         unreachable;
@@ -56,12 +77,12 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var) std.mem.Allocator.Error
                 const field_type = @memberType(T, i);
                 const field_name = @memberName(T, i);
                 const field_value = @field(from, field_name);
-                if (comptime std.mem.eql(u8, field_name, @typeName(field_type))) {
-                    var obj = try marshal(mem, field_value).Object.iterator();
+                if (comptime (@typeId(field_type) == .Struct and options.isStructFieldEmbedded(T, field_name, field_type))) {
+                    var obj = try marshal(mem, field_value, options).Object.iterator();
                     while (obj.next()) |item|
                         _ = try ret.Object.put(item.key, item.value);
                 } else if ((comptime (@typeId(field_type) != .Optional)) or (field_value != null))
-                    _ = try ret.Object.put(rewriteZigFieldNameToJsonObjectKey(field_name), try marshal(mem, field_value));
+                    _ = try ret.Object.put(rewriteZigFieldNameToJsonObjectKey(field_name), try marshal(mem, field_value, options));
             }
         }
         return ret;
@@ -69,7 +90,7 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var) std.mem.Allocator.Error
         @compileError("please file an issue to support JSON-marshaling of: " ++ @typeName(T));
 }
 
-pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const std.json.Value, set_optionals_null_on_bad_inputs: bool) error{
+pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const std.json.Value, comptime options: Options) error{
     MalformedInput,
     OutOfMemory,
 }!T {
@@ -120,21 +141,21 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
         };
     } else if (type_id == .Optional) switch (from.*) {
         .Null => return null,
-        else => if (unmarshal(type_info.Optional.child, mem, from, set_optionals_null_on_bad_inputs)) |ok|
+        else => if (unmarshal(type_info.Optional.child, mem, from, options)) |ok|
             return ok
-        else |err| if (err == error.MalformedInput and set_optionals_null_on_bad_inputs)
+        else |err| if (err == error.MalformedInput and comptime options.set_optionals_null_on_bad_inputs)
             return null
         else
             return err,
     } else if (type_id == .Pointer) {
         if (type_info.Pointer.size != .Slice) {
-            const copy = try unmarshal(type_info.Pointer.child, mem, from, set_optionals_null_on_bad_inputs);
+            const copy = try unmarshal(type_info.Pointer.child, mem, from, options);
             return try @import("./xstd.mem.zig").enHeap(&mem.allocator, copy);
         } else switch (from.*) {
             .Array => |jarr| {
                 var ret = try mem.allocator.alloc(type_info.Pointer.child, jarr.len);
                 for (jarr.items[0..jarr.len]) |*jval, i|
-                    ret[i] = try unmarshal(type_info.Pointer.child, mem, jval, set_optionals_null_on_bad_inputs);
+                    ret[i] = try unmarshal(type_info.Pointer.child, mem, jval, options);
                 return ret;
             },
             else => return error.MalformedInput,
@@ -148,10 +169,10 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
                     i -= 1;
                     const field_name = @memberName(T, i);
                     const field_type = @memberType(T, i);
-                    if (comptime std.mem.eql(u8, field_name, @typeName(field_type)))
-                        @field(ret, field_name) = try unmarshal(field_type, mem, from, set_optionals_null_on_bad_inputs)
+                    if (comptime (@typeId(field_type) == .Struct and options.isStructFieldEmbedded(T, field_name, field_type)))
+                        @field(ret, field_name) = try unmarshal(field_type, mem, from, options)
                     else if (jmap.getValue(rewriteZigFieldNameToJsonObjectKey(field_name))) |*jval|
-                        @field(ret, field_name) = try unmarshal(field_type, mem, jval, set_optionals_null_on_bad_inputs);
+                        @field(ret, field_name) = try unmarshal(field_type, mem, jval, options);
                 }
                 return ret;
             },
