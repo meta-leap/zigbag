@@ -32,7 +32,7 @@ test "misc" {
 }
 
 test "demo" {
-    const time_now = @intCast(i64, std.time.timestamp()); // want something guaranteed to be runtime-not-comptime
+    const time_now = @intCast(i64, std.time.milliTimestamp()); // want something guaranteed to be runtime-not-comptime
 
     const OurApi = @import("./engine.zig").Engine(Spec{
         .newReqId = nextReqId,
@@ -56,22 +56,26 @@ test "demo" {
     our_api.on(IncomingRequest{ .envVarValue = on_envVarValue });
     our_api.on(IncomingRequest{ .hostName = on_hostName });
 
-    json_out_str = try our_api.out(OutgoingRequest, .rnd, "rnd ret:", With({}, struct {
+    json_out_str = try our_api.request(.rnd, "rnd gave:", With({}, struct {
         pub fn then(ctx: String, in: Ret(f32)) anyerror!void {
             std.debug.warn(fmt_ritzy, .{ ctx, in.ok });
         }
     }));
     printJson(OutgoingRequest, json_out_str); // in reality, send it over your conn to counterparty
 
-    json_out_str = try our_api.out(OutgoingRequest, .pow2, "pow2 ret: ", With(time_now, struct {
+    try our_api.in("{ \"method\": \"shuttingDown\" }");
+
+    json_out_str = try our_api.request(.pow2, "pow2 gave: ", With(time_now, struct {
         pub fn then(ctx: String, in: Ret(i64)) anyerror!void {
             std.debug.warn(fmt_ritzy, .{ ctx, in.ok });
         }
     }));
     printJson(OutgoingRequest, json_out_str);
 
-    json_out_str = try our_api.out(OutgoingNotification, .envVarNames, {}, try envVarNames());
+    json_out_str = try our_api.notify(.envVarNames, {}, try envVarNames());
     printJson(OutgoingNotification, json_out_str);
+
+    // try our_api.in("{ \"method\": \"timeInfo\", \"params\": {\"start\": 123, \"now\": 321} }");
 }
 
 fn printJson(comptime T: type, json_bytes: []const u8) void {

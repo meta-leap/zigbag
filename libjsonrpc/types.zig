@@ -57,8 +57,8 @@ pub fn Ret(comptime T: type) type {
             },
         } {
             return switch (self) {
-                .ok => |it| .{ .with_result = .{ .id = id, .result = it } },
-                .err => |e| .{ .with_error = .{ .id = id, .error__ = e } },
+                .ok => |ok| .{ .with_result = .{ .id = id, .result = ok } },
+                .err => |err| .{ .with_error = .{ .id = id, .error__ = err } },
             };
         }
     };
