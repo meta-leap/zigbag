@@ -201,21 +201,18 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                                 inline for (@typeInfo(spec.RequestOut).Union.fields) |*spec_field, idx| {
                                     if (response_awaiter.req_union_idx == idx) {
                                         const TResponse = std.meta.declarationInfo(spec_field.field_type, "Result").data.Type;
-                                        const TThenFuncCtxHave = fn (usize, Ret(TResponse), *std.mem.Allocator) void;
-                                        const TThenFuncCtxVoid = fn (void, Ret(TResponse), *std.mem.Allocator) void;
-                                        var fn_arg: Ret(TResponse) = undefined;
-                                        if (msg.result_err) |err|
-                                            fn_arg = Ret(TResponse){ .err = err }
+                                        const fn_arg = if (msg.result_err) |err|
+                                            Ret(TResponse){ .err = err }
                                         else if (msg.result_ok) |ret|
-                                            fn_arg = Ret(TResponse){ .ok = try json.unmarshal(TResponse, &response_awaiter.mem_arena, ret, json_options) }
+                                            Ret(TResponse){ .ok = try json.unmarshal(TResponse, &response_awaiter.mem_arena, ret, json_options) }
                                         else
-                                            fn_arg = Ret(TResponse){ .err = ResponseError{ .code = 0, .message = "unreachable" } }; // unreachable; // TODO! Zig currently segfaults here, check back later
+                                            Ret(TResponse){ .err = ResponseError{ .code = 0, .message = "unreachable" } }; // unreachable; // TODO! Zig currently segfaults here, check back later
 
                                         if (response_awaiter.ptr_ctx == 0) {
-                                            var fn_then = @intToPtr(TThenFuncCtxVoid, response_awaiter.ptr_fn);
+                                            const fn_then = @intToPtr(fn (void, Ret(TResponse), *std.mem.Allocator) void, response_awaiter.ptr_fn);
                                             fn_then(undefined, fn_arg, &response_awaiter.mem_arena.allocator);
                                         } else {
-                                            var fn_then = @intToPtr(TThenFuncCtxHave, response_awaiter.ptr_fn);
+                                            const fn_then = @intToPtr(fn (usize, Ret(TResponse), *std.mem.Allocator) void, response_awaiter.ptr_fn);
                                             fn_then(response_awaiter.ptr_ctx, fn_arg, &response_awaiter.mem_arena.allocator);
                                         }
                                         return;

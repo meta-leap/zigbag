@@ -63,8 +63,8 @@ test "demo" {
     try our_rpc.incoming("{ \"id\": 2, \"method\": \"hostName\" }");
     try our_rpc.incoming("{ \"id\": 3, \"method\": \"negate\", \"params\": 42.42 }");
 
-    try our_rpc.request(.rnd, false, {}, struct {
-        pub fn then(ctx: *bool, in: Ret(f32), mem: *std.mem.Allocator) void {
+    try our_rpc.request(.rnd, "rnd gave:", {}, struct {
+        pub fn then(ctx: *String, in: Ret(f32), mem: *std.mem.Allocator) void {
             std.debug.warn(fmt_ritzy, .{ ctx.*, in });
         }
     });
@@ -72,14 +72,14 @@ test "demo" {
     try our_rpc.incoming("{ \"method\": \"timeInfo\", \"params\": {\"start\": 123, \"now\": 321} }");
     try our_rpc.incoming("{ \"id\": \"demo_req_id_1\", \"result\": 123.456 }");
 
-    try our_rpc.request(.pow2, @intCast(i40, 12121), time_now, struct {
-        pub fn then(ctx: *i40, in: Ret(i64), mem: *std.mem.Allocator) void {
+    try our_rpc.request(.pow2, "pow2 gave:", time_now, struct {
+        pub fn then(ctx: *String, in: Ret(i64), mem: *std.mem.Allocator) void {
             std.debug.warn(fmt_ritzy, .{ ctx.*, in });
         }
     });
 
-    try our_rpc.request(.add, @intCast(i32, 23232), AddArgs{ .a = 42, .b = 23 }, struct {
-        pub fn then(ctx: *i32, in: Ret(?i64), mem: *std.mem.Allocator) void {
+    try our_rpc.request(.add, "add gave:", AddArgs{ .a = 42, .b = 23 }, struct {
+        pub fn then(ctx: *String, in: Ret(?i64), mem: *std.mem.Allocator) void {
             std.debug.warn(fmt_ritzy, .{ ctx.*, in });
         }
     });
