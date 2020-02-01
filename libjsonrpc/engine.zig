@@ -5,47 +5,16 @@ usingnamespace @import("./types.zig");
 const json = @import("./json.zig");
 
 pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
-    const InternalState = struct {
-        const ResponseAwaiter = struct {
-            mem_arena: std.heap.ArenaAllocator,
-            req_id: @TypeOf(spec.newReqId).ReturnType,
-            ptr_ctx: usize,
-            ptr_fn: usize,
-        };
-        shared_out_buf: ?std.ArrayList(u8) = null,
-        handlers_notifies: [@memberCount(spec.NotifyIn)]?usize,
-        handlers_requests: [@memberCount(spec.RequestIn)]?usize,
-        handlers_responses: ?std.ArrayList(ResponseAwaiter) = null,
-        fn jsonValueToBytes(self: *@This(), mem: *std.mem.Allocator, json_value: *const std.json.Value, comptime nesting_depth: comptime_int) ![]const u8 {
-            while (true) {
-                if (self.shared_out_buf) |*shared_out_buf| {
-                    var out_to_buf = std.io.SliceOutStream.init(shared_out_buf.items);
-                    if (json_value.dumpStream(&out_to_buf.stream, nesting_depth))
-                        return shared_out_buf.items[0..out_to_buf.pos]
-                    else |err| if (err == error.OutOfSpace)
-                        try shared_out_buf.ensureCapacity(2 * shared_out_buf.capacity())
-                    else
-                        return err;
-                } else
-                    self.shared_out_buf = try std.ArrayList(u8).initCapacity(mem, 16 * 1024);
-            }
-        }
-    };
-
-    comptime var json_options: json.Options = jsonOptions;
-    comptime {
-        if (json_options.isStructFieldEmbedded == null)
-            json_options.isStructFieldEmbedded = defaultIsFieldEmbedded;
-        if (json_options.rewriteZigFieldNameToJsonObjectKey == null)
-            json_options.rewriteZigFieldNameToJsonObjectKey = defaultRewriteZigFieldNameToJsonObjectKey;
-        if (json_options.rewriteUnionFieldNameToJsonRpcMethodName == null)
-            json_options.rewriteUnionFieldNameToJsonRpcMethodName = defaultRewriteUnionFieldNameToJsonRpcMethodName;
-        if (json_options.rewriteJsonRpcMethodNameToUnionFieldName == null)
-            json_options.rewriteJsonRpcMethodNameToUnionFieldName = defaultRewriteJsonRpcMethodNameToUnionFieldName;
-    }
+    comptime var json_options = @import("./zcomptime.zig").copyWithAllNullsSetFrom(json.Options, &jsonOptions, json.Options{
+        .isStructFieldEmbedded = defaultIsStructFieldEmbedded,
+        .rewriteStructFieldNameToJsonObjectKey = defaultRewriteStructFieldNameToJsonObjectKey,
+        .rewriteUnionFieldNameToJsonRpcMethodName = defaultRewriteUnionFieldNameToJsonRpcMethodName,
+        .rewriteJsonRpcMethodNameToUnionFieldName = defaultRewriteJsonRpcMethodNameToUnionFieldName,
+    });
 
     return struct {
         mem_alloc_for_arenas: *std.mem.Allocator,
+        onOutgoing: fn ([]const u8) void,
         __: InternalState = InternalState{
             .handlers_notifies = ([_]?usize{null}) ** @memberCount(spec.NotifyIn),
             .handlers_requests = ([_]?usize{null}) ** @memberCount(spec.RequestIn),
@@ -62,11 +31,11 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
             }
         }
 
-        pub fn notify(self: *@This(), comptime tag: @TagType(spec.NotifyOut), req_ctx: var, payload: @memberType(spec.NotifyOut, @enumToInt(tag))) ![]const u8 {
+        pub fn notify(self: *@This(), comptime tag: @TagType(spec.NotifyOut), req_ctx: var, payload: @memberType(spec.NotifyOut, @enumToInt(tag))) !void {
             return self.out(spec.NotifyOut, tag, req_ctx, payload);
         }
 
-        pub fn request(self: *@This(), comptime tag: @TagType(spec.RequestOut), req_ctx: var, payload: @memberType(spec.RequestOut, @enumToInt(tag))) ![]const u8 {
+        pub fn request(self: *@This(), comptime tag: @TagType(spec.RequestOut), req_ctx: var, payload: @memberType(spec.RequestOut, @enumToInt(tag))) !void {
             return self.out(spec.RequestOut, tag, req_ctx, payload);
         }
 
@@ -80,7 +49,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
             arr[idx] = fn_ptr;
         }
 
-        pub fn out(self: *@This(), comptime T: type, comptime tag: @TagType(T), req_ctx: var, payload: @memberType(T, @enumToInt(tag))) ![]const u8 {
+        pub fn out(self: *@This(), comptime T: type, comptime tag: @TagType(T), req_ctx: var, payload: @memberType(T, @enumToInt(tag))) !void {
             const is_request = (T == spec.RequestOut);
             comptime std.debug.assert(is_request or T == spec.NotifyOut);
 
@@ -113,24 +82,24 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                     .ptr_fn = payload.then_fn_ptr,
                 });
                 // if (std.mem.eql(u8, "demo_req_id_2", req_id.String)) {
-                //     const then = @intToPtr(fn (String, Ret(i64)) anyerror!void, payload.then_fn_ptr);
+                //     const then = @intToPtr(fn ( []const u8, Ret(i64)) anyerror!void, payload.then_fn_ptr);
                 //     try then(ctx.*, Ret(i64){ .ok = @intCast(i64, 12345) });
                 // } else if (std.mem.eql(u8, "demo_req_id_1", req_id.String)) {
-                //     const then = @intToPtr(fn (String, Ret(f32)) anyerror!void, payload.then_fn_ptr);
+                //     const then = @intToPtr(fn ( []const u8, Ret(f32)) anyerror!void, payload.then_fn_ptr);
                 //     try then(ctx.*, Ret(f32){ .ok = @floatCast(f32, 123.45) });
                 // }
             }
-            return self.__.jsonValueToBytes(self.mem_alloc_for_arenas, &out_msg, 64); // TODO! nesting-depth..
+            self.onOutgoing(try self.__.jsonValueToBytes(self.mem_alloc_for_arenas, &out_msg, 64)); // TODO! nesting-depth..
         }
 
-        pub fn in(self: *@This(), full_incoming_jsonrpc_msg_payload: []const u8) !?[]const u8 {
+        pub fn in(self: *@This(), full_incoming_jsonrpc_msg_payload: []const u8) !void {
             var mem_local = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
             defer mem_local.deinit();
             // std.debug.warn("\n\n>>>>>INCOMING>>>>>{s}<<<<<<<<<<\n\n", .{full_incoming_jsonrpc_msg_payload});
 
             var msg: struct {
                 id: ?*std.json.Value = null,
-                method: String = undefined,
+                method: []const u8 = undefined,
                 params: ?*std.json.Value = null,
                 result_ok: ?*std.json.Value = null,
                 result_err: ?ResponseError = null,
@@ -182,7 +151,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                                 const fn_ptr = @intToPtr(spec_field.field_type, fn_ptr_uint);
                                 fn_ptr(.{ .it = param_val, .mem = &mem_local.allocator });
                             }
-                            return null;
+                            return;
                         };
                     return error.MsgNotifyInUnknownMethod;
                 },
@@ -203,29 +172,58 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                                     return error.MsgRequestInParamsMissing;
                                 const fn_ptr = @intToPtr(spec_field.field_type, fn_ptr_uint);
                                 const fn_ret = fn_ptr(.{ .it = param_val, .mem = &mem_local.allocator });
-                                return try self.__.jsonValueToBytes(self.mem_alloc_for_arenas, &(try json.marshal(&mem_local, fn_ret.toJsonRpcResponse(msg.id), json_options)), 64);
+                                return self.onOutgoing(try self.__.jsonValueToBytes(self.mem_alloc_for_arenas, &(try json.marshal(&mem_local, fn_ret.toJsonRpcResponse(msg.id), json_options)), 64));
                             }
-                            return null;
+                            return;
                         };
-                    return try self.__.jsonValueToBytes(self.mem_alloc_for_arenas, &(try json.marshal(&mem_local, ResponseError{
+                    return self.onOutgoing(try self.__.jsonValueToBytes(self.mem_alloc_for_arenas, &(try json.marshal(&mem_local, ResponseError{
                         .code = @enumToInt(ErrorCodes.MethodNotFound),
                         .message = msg.method,
-                    }, json_options)), 64);
+                    }, json_options)), 64));
                 },
 
                 .response => {
-                    return null;
+                    return;
                 },
             }
         }
+
+        const InternalState = struct {
+            const ResponseAwaiter = struct {
+                mem_arena: std.heap.ArenaAllocator,
+                req_id: @TypeOf(spec.newReqId).ReturnType,
+                ptr_ctx: usize,
+                ptr_fn: usize,
+            };
+
+            shared_out_buf: ?std.ArrayList(u8) = null,
+            handlers_notifies: [@memberCount(spec.NotifyIn)]?usize,
+            handlers_requests: [@memberCount(spec.RequestIn)]?usize,
+            handlers_responses: ?std.ArrayList(ResponseAwaiter) = null,
+
+            fn jsonValueToBytes(self: *@This(), mem: *std.mem.Allocator, json_value: *const std.json.Value, comptime nesting_depth: comptime_int) ![]const u8 {
+                while (true) {
+                    if (self.shared_out_buf) |*shared_out_buf| {
+                        var out_to_buf = std.io.SliceOutStream.init(shared_out_buf.items);
+                        if (json_value.dumpStream(&out_to_buf.stream, nesting_depth))
+                            return shared_out_buf.items[0..out_to_buf.pos]
+                        else |err| if (err == error.OutOfSpace)
+                            try shared_out_buf.ensureCapacity(2 * shared_out_buf.capacity())
+                        else
+                            return err;
+                    } else
+                        self.shared_out_buf = try std.ArrayList(u8).initCapacity(mem, 16 * 1024);
+                }
+            }
+        };
     };
 }
 
-fn defaultRewriteZigFieldNameToJsonObjectKey(comptime TStruct: type, field_name: []const u8) []const u8 {
+fn defaultRewriteStructFieldNameToJsonObjectKey(comptime TStruct: type, field_name: []const u8) []const u8 {
     return field_name;
 }
 
-fn defaultIsFieldEmbedded(comptime struct_type: type, field_name: []const u8, comptime field_type: type) bool {
+fn defaultIsStructFieldEmbedded(comptime struct_type: type, field_name: []const u8, comptime field_type: type) bool {
     return false; // std.mem.eql(u8, field_name, @typeName(field_type));
 }
 

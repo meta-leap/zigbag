@@ -1,10 +1,13 @@
 const std = @import("std");
 
+usingnamespace @import("./zcomptime.zig");
+
 pub const Options = struct {
     set_optionals_null_on_bad_inputs: bool = false,
     err_on_missing_nonvoid_nonoptional_fields: bool = true,
+
     isStructFieldEmbedded: ?fn (type, []const u8, type) bool = null,
-    rewriteZigFieldNameToJsonObjectKey: ?fn (type, []const u8) []const u8 = null,
+    rewriteStructFieldNameToJsonObjectKey: ?fn (type, []const u8) []const u8 = null,
     rewriteUnionFieldNameToJsonRpcMethodName: ?fn (type, comptime_int, []const u8) []const u8 = null,
     rewriteJsonRpcMethodNameToUnionFieldName: ?fn (MsgKind, []const u8) []const u8 = null,
 
@@ -65,7 +68,7 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var, comptime options: Optio
     }
     if (type_id == .Struct) {
         var ret = std.json.Value{ .Object = std.json.ObjectMap.init(&mem.allocator) };
-        if (comptime @import("./zcomptime.zig").isTypeHashMapLikeDuckwise(T)) {
+        if (comptime isTypeHashMapLikeDuckwise(T)) {
             var iter = from.iterator();
             while (iter.next()) |pair|
                 _ = try ret.Object.put(pair.key, pair.value);
@@ -90,7 +93,7 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var, comptime options: Optio
                 } else {
                     var should = if (field_type_id == .Optional) (field_value != null) else true;
                     if (should) // TODO! check "control flow attempts to use compile-time variable at runtime" if above var is either const or directly inside the `if`-cond
-                        _ = try ret.Object.put(options.rewriteZigFieldNameToJsonObjectKey.?(T, field_name), try marshal(mem, field_value, options));
+                        _ = try ret.Object.put(options.rewriteStructFieldNameToJsonObjectKey.?(T, field_name), try marshal(mem, field_value, options));
                 }
             }
         }
@@ -176,7 +179,7 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
     } else if (type_id == .Struct) {
         switch (from.*) {
             .Object => |*jmap| {
-                if (comptime @import("./zcomptime.zig").isTypeHashMapLikeDuckwise(T))
+                if (comptime isTypeHashMapLikeDuckwise(T))
                     @compileError("TODO: support JSON-unmarshaling into: " ++ @typeName(T))
                 else {
                     var ret = @import("./xstd.mem.zig").zeroed(T);
@@ -188,7 +191,7 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
                         const field_embed = comptime (@typeId(field_type) == .Struct and options.isStructFieldEmbedded.?(T, field_name, field_type));
                         if (field_embed)
                             @field(ret, field_name) = try unmarshal(field_type, mem, from, options)
-                        else if (jmap.getValue(options.rewriteZigFieldNameToJsonObjectKey.?(T, field_name))) |*jval|
+                        else if (jmap.getValue(options.rewriteStructFieldNameToJsonObjectKey.?(T, field_name))) |*jval|
                             @field(ret, field_name) = try unmarshal(field_type, mem, jval, options)
                         else if (options.err_on_missing_nonvoid_nonoptional_fields) {
                             // return error.MissingField;

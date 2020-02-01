@@ -15,11 +15,9 @@ pub const ErrorCodes = enum(isize) {
 pub const ResponseError = struct {
     /// see `ErrorCodes` enumeration
     code: isize,
-    message: String,
+    message: []const u8,
     data: ?*const std.json.Value = null,
 };
-
-pub const String = []const u8;
 
 pub const Spec = struct {
     newReqId: fn (owner: *std.mem.Allocator) anyerror!std.json.Value,
@@ -69,12 +67,12 @@ pub fn Ret(comptime T: type) type {
             with_result: struct {
                 id: @TypeOf(id),
                 result: T,
-                jsonrpc: String = "2.0",
+                jsonrpc: []const u8 = "2.0",
             },
             with_error: struct {
                 id: @TypeOf(id),
                 error__: ResponseError,
-                jsonrpc: String = "2.0",
+                jsonrpc: []const u8 = "2.0",
             },
         } {
             return switch (self) {

@@ -2,97 +2,88 @@ const std = @import("std");
 
 usingnamespace @import("./types.zig");
 
-const fmt_ritzy = "\n\n==={}===\n{}\n\n";
+const String = []const u8;
+
+const fmt_ritzy = "\n\n=== {} ===\n{}\n";
 var mem = std.heap.ArenaAllocator.init(std.heap.page_allocator); // outside of `zig test` should of course `defer .deinit()`...
 
-pub const IncomingRequest = union(enum) {
-    negate: fn (Arg(i64)) Ret(i64),
-    hostName: fn (Arg(void)) Ret([]u8),
-    envVarValue: fn (Arg(String)) Ret(String),
-};
-pub const OutgoingRequest = union(enum) {
-    pow2: Req(i64, i64),
-    rnd: Req(void, f32),
-    add: Req(struct {
-        a: i64,
-        b: i64,
-    }, i64),
-};
-pub const IncomingNotification = union(enum) {
-    timeInfo: fn (Arg(TimeInfo)) void,
-    shuttingDown: fn (Arg(void)) void,
-};
-pub const OutgoingNotification = union(enum) {
-    envVarNames: []String,
-    shoutOut: bool,
-};
+const our_api = Spec{
+    .newReqId = nextReqId,
 
-test "misc" {
-    std.testing.expect(@import("zcomptime.zig").isTypeHashMapLikeDuckwise(std.StringHashMap([][]u8)));
-}
+    .RequestIn = union(enum) {
+        negate: fn (Arg(i64)) Ret(i64),
+        hostName: fn (Arg(void)) Ret([]u8),
+        envVarValue: fn (Arg(String)) Ret(String),
+    },
+
+    .RequestOut = union(enum) {
+        pow2: Req(i64, i64),
+        rnd: Req(void, f32),
+        add: Req(struct {
+            a: i64,
+            b: i64,
+        }, i64),
+    },
+
+    .NotifyIn = union(enum) {
+        timeInfo: fn (Arg(TimeInfo)) void,
+        shuttingDown: fn (Arg(void)) void,
+    },
+
+    .NotifyOut = union(enum) {
+        envVarNames: []String,
+        shoutOut: bool,
+    },
+};
 
 test "demo" {
     const time_now = @intCast(i64, std.time.milliTimestamp()); // want something guaranteed to be runtime-not-comptime
 
-    const OurApi = @import("./engine.zig").Engine(Spec{
-        .newReqId = nextReqId,
-        .RequestIn = IncomingRequest,
-        .RequestOut = OutgoingRequest,
-        .NotifyIn = IncomingNotification,
-        .NotifyOut = OutgoingNotification,
-    }, @import("./json.zig").Options{});
+    const Engine = @import("./engine.zig").
+        Engine(our_api, @import("./json.zig").Options{});
 
-    var our_api = OurApi{
+    var our_rpc = Engine{
+        .onOutgoing = onOutput,
         .mem_alloc_for_arenas = std.heap.page_allocator,
     };
-    defer our_api.deinit();
+    defer our_rpc.deinit();
 
-    // that was the SETUP, now some USAGE!
+    // that was the SETUP, now some USAGE:
 
     var json_out_str: []const u8 = undefined;
 
-    our_api.on(IncomingNotification{ .timeInfo = on_timeInfo });
-    our_api.on(IncomingRequest{ .negate = on_negate });
-    our_api.on(IncomingRequest{ .envVarValue = on_envVarValue });
-    our_api.on(IncomingRequest{ .hostName = on_hostName });
+    our_rpc.on(our_api.NotifyIn{ .timeInfo = on_timeInfo });
+    our_rpc.on(our_api.RequestIn{ .negate = on_negate });
+    our_rpc.on(our_api.RequestIn{ .envVarValue = on_envVarValue });
+    our_rpc.on(our_api.RequestIn{ .hostName = on_hostName });
 
-    if (try our_api.in("{ \"id\": 1, \"method\": \"envVarValue\", \"params\": \"GOPATH\" }")) |json_out|
-        printJson(null, json_out);
-    if (try our_api.in("{ \"id\": 2, \"method\": \"hostName\" }")) |json_out|
-        printJson(null, json_out);
-    if (try our_api.in("{ \"id\": 3, \"method\": \"negate\", \"params\": 42.42 }")) |json_out|
-        printJson(null, json_out);
+    try our_rpc.in("{ \"id\": 1, \"method\": \"envVarValue\", \"params\": \"GOPATH\" }");
+    try our_rpc.in("{ \"id\": 2, \"method\": \"hostName\" }");
+    try our_rpc.in("{ \"id\": 3, \"method\": \"negate\", \"params\": 42.42 }");
 
-    json_out_str = try our_api.request(.rnd, "rnd gave:", With({}, struct {
+    try our_rpc.request(.rnd, "rnd gave:", With({}, struct {
         pub fn then(ctx: String, in: Ret(f32)) anyerror!void {
             std.debug.warn(fmt_ritzy, .{ ctx, in.ok });
         }
     }));
-    printJson(OutgoingRequest, json_out_str);
 
-    if (try our_api.in("{ \"method\": \"timeInfo\", \"params\": {\"start\": 123, \"now\": 321} }")) |json_out|
-        printJson(null, json_out);
-    if (try our_api.in("{ \"id\": \"demo_req_id_1\", \"result\": 123.456 }")) |json_out|
-        printJson(null, json_out);
+    try our_rpc.in("{ \"method\": \"timeInfo\", \"params\": {\"start\": 123, \"now\": 321} }");
+    try our_rpc.in("{ \"id\": \"demo_req_id_1\", \"result\": 123.456 }");
 
-    json_out_str = try our_api.request(.pow2, "pow2 gave: ", With(time_now, struct {
+    try our_rpc.request(.pow2, "pow2 gave: ", With(time_now, struct {
         pub fn then(ctx: String, in: Ret(i64)) anyerror!void {
             std.debug.warn(fmt_ritzy, .{ ctx, in.ok });
         }
     }));
-    printJson(OutgoingRequest, json_out_str);
 
-    json_out_str = try our_api.notify(.envVarNames, {}, try demo_envVarNames());
-    printJson(OutgoingNotification, json_out_str);
+    try our_rpc.notify(.envVarNames, {}, try demo_envVarNames());
 
-    if (try our_api.in("{ \"id\": \"demo_req_id_2\", \"error\": { \"code\": 12345, \"message\": \"No pow2 to you!\" } }")) |json_out|
-        printJson(null, json_out);
-    if (try our_api.in("{ \"method\": \"shuttingDown\" }")) |json_out|
-        printJson(null, json_out);
+    try our_rpc.in("{ \"id\": \"demo_req_id_2\", \"error\": { \"code\": 12345, \"message\": \"No pow2 to you!\" } }");
+    try our_rpc.in("{ \"method\": \"shuttingDown\" }");
 }
 
-fn printJson(comptime T: ?type, json_bytes: []const u8) void {
-    std.debug.warn(fmt_ritzy, .{ if (T) |It| @typeName(It) else "OutgoingResponse", json_bytes });
+fn onOutput(json_bytes: []const u8) void {
+    std.debug.warn(fmt_ritzy, .{ "Outgoing JSON", json_bytes });
 }
 
 fn nextReqId(owner: *std.mem.Allocator) !std.json.Value {
@@ -111,7 +102,7 @@ const TimeInfo = struct {
 };
 
 fn on_timeInfo(in: Arg(TimeInfo)) void {
-    std.debug.warn(fmt_ritzy, .{ @typeName(IncomingNotification), in.it });
+    std.debug.warn(fmt_ritzy, .{ "on_timeInfo", in.it });
 }
 
 fn on_negate(in: Arg(i64)) Ret(i64) {
@@ -143,4 +134,8 @@ fn demo_envVarNames() ![]String {
             try ret.append(pair[0..pos]);
     }
     return ret.toOwnedSlice();
+}
+
+test "misc" {
+    std.testing.expect(@import("zcomptime.zig").isTypeHashMapLikeDuckwise(std.StringHashMap([][]u8)));
 }
