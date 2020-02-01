@@ -53,13 +53,14 @@ test "demo" {
     var json_out_str: []const u8 = undefined;
 
     our_rpc.on(our_api.NotifyIn{ .timeInfo = on_timeInfo });
+    our_rpc.on(our_api.NotifyIn{ .shuttingDown = on_shuttingDown });
     our_rpc.on(our_api.RequestIn{ .negate = on_negate });
     our_rpc.on(our_api.RequestIn{ .envVarValue = on_envVarValue });
     our_rpc.on(our_api.RequestIn{ .hostName = on_hostName });
 
-    try our_rpc.in("{ \"id\": 1, \"method\": \"envVarValue\", \"params\": \"GOPATH\" }");
-    try our_rpc.in("{ \"id\": 2, \"method\": \"hostName\" }");
-    try our_rpc.in("{ \"id\": 3, \"method\": \"negate\", \"params\": 42.42 }");
+    try our_rpc.incoming("{ \"id\": 1, \"method\": \"envVarValue\", \"params\": \"GOPATH\" }");
+    try our_rpc.incoming("{ \"id\": 2, \"method\": \"hostName\" }");
+    try our_rpc.incoming("{ \"id\": 3, \"method\": \"negate\", \"params\": 42.42 }");
 
     try our_rpc.request(.rnd, "rnd gave:", With({}, struct {
         pub fn then(ctx: String, in: Ret(f32)) anyerror!void {
@@ -67,8 +68,8 @@ test "demo" {
         }
     }));
 
-    try our_rpc.in("{ \"method\": \"timeInfo\", \"params\": {\"start\": 123, \"now\": 321} }");
-    try our_rpc.in("{ \"id\": \"demo_req_id_1\", \"result\": 123.456 }");
+    try our_rpc.incoming("{ \"method\": \"timeInfo\", \"params\": {\"start\": 123, \"now\": 321} }");
+    try our_rpc.incoming("{ \"id\": \"demo_req_id_1\", \"result\": 123.456 }");
 
     try our_rpc.request(.pow2, "pow2 gave: ", With(time_now, struct {
         pub fn then(ctx: String, in: Ret(i64)) anyerror!void {
@@ -78,8 +79,8 @@ test "demo" {
 
     try our_rpc.notify(.envVarNames, {}, try demo_envVarNames());
 
-    try our_rpc.in("{ \"id\": \"demo_req_id_2\", \"error\": { \"code\": 12345, \"message\": \"No pow2 to you!\" } }");
-    try our_rpc.in("{ \"method\": \"shuttingDown\" }");
+    try our_rpc.incoming("{ \"id\": \"demo_req_id_2\", \"error\": { \"code\": 12345, \"message\": \"No pow2 to you!\" } }");
+    try our_rpc.incoming("{ \"method\": \"shuttingDown\" }");
 }
 
 fn onOutput(json_bytes: []const u8) void {
@@ -103,6 +104,10 @@ const TimeInfo = struct {
 
 fn on_timeInfo(in: Arg(TimeInfo)) void {
     std.debug.warn(fmt_ritzy, .{ "on_timeInfo", in.it });
+}
+
+fn on_shuttingDown(in: Arg(void)) void {
+    std.debug.warn(fmt_ritzy, .{ "on_shuttingDown", in.it });
 }
 
 fn on_negate(in: Arg(i64)) Ret(i64) {

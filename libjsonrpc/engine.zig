@@ -4,6 +4,8 @@ usingnamespace @import("./types.zig");
 
 const json = @import("./json.zig");
 
+const tmp_json_depth = 128; // TODO! compute depth statically
+
 pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
     comptime var json_options = @import("./zcomptime.zig").copyWithAllNullsSetFrom(json.Options, &jsonOptions, json.Options{
         .isStructFieldEmbedded = defaultIsStructFieldEmbedded,
@@ -13,8 +15,10 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
     });
 
     return struct {
+        force_single_threaded: bool = @import("builtin").single_threaded,
         mem_alloc_for_arenas: *std.mem.Allocator,
         onOutgoing: fn ([]const u8) void,
+
         __: InternalState = InternalState{
             .handlers_notifies = ([_]?usize{null}) ** @memberCount(spec.NotifyIn),
             .handlers_requests = ([_]?usize{null}) ** @memberCount(spec.RequestIn),
@@ -81,21 +85,14 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                     .ptr_ctx = @ptrToInt(ctx),
                     .ptr_fn = payload.then_fn_ptr,
                 });
-                // if (std.mem.eql(u8, "demo_req_id_2", req_id.String)) {
-                //     const then = @intToPtr(fn ( []const u8, Ret(i64)) anyerror!void, payload.then_fn_ptr);
-                //     try then(ctx.*, Ret(i64){ .ok = @intCast(i64, 12345) });
-                // } else if (std.mem.eql(u8, "demo_req_id_1", req_id.String)) {
-                //     const then = @intToPtr(fn ( []const u8, Ret(f32)) anyerror!void, payload.then_fn_ptr);
-                //     try then(ctx.*, Ret(f32){ .ok = @floatCast(f32, 123.45) });
-                // }
             }
-            self.onOutgoing(try self.__.jsonValueToBytes(self.mem_alloc_for_arenas, &out_msg, 64)); // TODO! nesting-depth..
+            const json_out_bytes_in_shared_buf = try self.__.dumpJsonValueToSharedBuf(self.mem_alloc_for_arenas, &out_msg, tmp_json_depth);
+            self.onOutgoing(try std.mem.dupe(&mem_local.allocator, u8, json_out_bytes_in_shared_buf));
         }
 
-        pub fn in(self: *@This(), full_incoming_jsonrpc_msg_payload: []const u8) !void {
+        pub fn incoming(self: *@This(), full_incoming_jsonrpc_msg_payload: []const u8) !void {
             var mem_local = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
             defer mem_local.deinit();
-            // std.debug.warn("\n\n>>>>>INCOMING>>>>>{s}<<<<<<<<<<\n\n", .{full_incoming_jsonrpc_msg_payload});
 
             var msg: struct {
                 id: ?*std.json.Value = null,
@@ -106,7 +103,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                 kind: json.Options.MsgKind = undefined,
             } = .{};
 
-            // first: gather what we can for `msg`
+            // FIRST: gather what we can for `msg`
             switch ((try std.json.Parser.init(&mem_local.allocator, true).parse(full_incoming_jsonrpc_msg_payload)).root) {
                 else => return error.MsgIsNoJsonObj,
                 std.json.Value.Object => |*hashmap| {
@@ -132,7 +129,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                 },
             }
 
-            // next: *now* handle `msg`
+            // NEXT: *now* handle `msg`
             switch (msg.kind) {
                 .notification => {
                     inline for (@typeInfo(spec.NotifyIn).Union.fields) |*spec_field, idx|
@@ -172,18 +169,36 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                                     return error.MsgRequestInParamsMissing;
                                 const fn_ptr = @intToPtr(spec_field.field_type, fn_ptr_uint);
                                 const fn_ret = fn_ptr(.{ .it = param_val, .mem = &mem_local.allocator });
-                                return self.onOutgoing(try self.__.jsonValueToBytes(self.mem_alloc_for_arenas, &(try json.marshal(&mem_local, fn_ret.toJsonRpcResponse(msg.id), json_options)), 64));
+                                const json_out_bytes_in_shared_buf = try self.__.dumpJsonValueToSharedBuf(self.mem_alloc_for_arenas, &(try json.marshal(&mem_local, fn_ret.toJsonRpcResponse(msg.id), json_options)), tmp_json_depth);
+                                return self.onOutgoing(try std.mem.dupe(&mem_local.allocator, u8, json_out_bytes_in_shared_buf));
                             }
                             return;
                         };
-                    return self.onOutgoing(try self.__.jsonValueToBytes(self.mem_alloc_for_arenas, &(try json.marshal(&mem_local, ResponseError{
+                    const json_out_bytes_in_shared_buf = try self.__.dumpJsonValueToSharedBuf(self.mem_alloc_for_arenas, &(try json.marshal(&mem_local, ResponseError{
                         .code = @enumToInt(ErrorCodes.MethodNotFound),
                         .message = msg.method,
-                    }, json_options)), 64));
+                    }, json_options)), tmp_json_depth);
+                    return self.onOutgoing(try std.mem.dupe(&mem_local.allocator, u8, json_out_bytes_in_shared_buf));
                 },
 
                 .response => {
-                    return;
+                    if (self.__.handlers_responses) |*handlers_responses| for (handlers_responses.items[0..handlers_responses.len]) |*response_awaiter, i| {
+                        if (@import("./xstd.json.zig").eql(response_awaiter.req_id, msg.id.?.*)) {
+                            // if (std.mem.eql(u8, "demo_req_id_2", req_id.String)) {
+                            //     const then = @intToPtr(fn ( []const u8, Ret(i64)) anyerror!void, payload.then_fn_ptr);
+                            //     try then(ctx.*, Ret(i64){ .ok = @intCast(i64, 12345) });
+                            // } else if (std.mem.eql(u8, "demo_req_id_1", req_id.String)) {
+                            //     const then = @intToPtr(fn ( []const u8, Ret(f32)) anyerror!void, payload.then_fn_ptr);
+                            //     try then(ctx.*, Ret(f32){ .ok = @floatCast(f32, 123.45) });
+                            // }
+                            std.debug.warn("\n\nFOOOOOUND\t{}\n\n\n", .{msg.id.?});
+
+                            response_awaiter.mem_arena.deinit(); // TODO! errdefer also if we try above
+                            _ = handlers_responses.swapRemove(i);
+                            return;
+                        }
+                    };
+                    return error.MsgResponseInUnknownReqId;
                 },
             }
         }
@@ -191,7 +206,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
         const InternalState = struct {
             const ResponseAwaiter = struct {
                 mem_arena: std.heap.ArenaAllocator,
-                req_id: @TypeOf(spec.newReqId).ReturnType,
+                req_id: std.json.Value,
                 ptr_ctx: usize,
                 ptr_fn: usize,
             };
@@ -201,7 +216,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
             handlers_requests: [@memberCount(spec.RequestIn)]?usize,
             handlers_responses: ?std.ArrayList(ResponseAwaiter) = null,
 
-            fn jsonValueToBytes(self: *@This(), mem: *std.mem.Allocator, json_value: *const std.json.Value, comptime nesting_depth: comptime_int) ![]const u8 {
+            fn dumpJsonValueToSharedBuf(self: *@This(), owner: *std.mem.Allocator, json_value: *const std.json.Value, comptime nesting_depth: comptime_int) ![]const u8 {
                 while (true) {
                     if (self.shared_out_buf) |*shared_out_buf| {
                         var out_to_buf = std.io.SliceOutStream.init(shared_out_buf.items);
@@ -212,7 +227,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                         else
                             return err;
                     } else
-                        self.shared_out_buf = try std.ArrayList(u8).initCapacity(mem, 16 * 1024);
+                        self.shared_out_buf = try std.ArrayList(u8).initCapacity(owner, 16 * 1024);
                 }
             }
         };
