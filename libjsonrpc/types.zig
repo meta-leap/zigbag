@@ -16,7 +16,7 @@ pub const ResponseError = struct {
     /// see `ErrorCodes` enumeration
     code: isize,
     message: []const u8,
-    data: ?*const std.json.Value = null,
+    data: ?*std.json.Value = null,
 };
 
 pub const Spec = struct {
@@ -29,25 +29,32 @@ pub const Spec = struct {
 
 pub fn Req(comptime TParam: type, comptime TRet: type) type {
     return struct {
+        t_ret: ?*TRet = null, // never "used" (as a value), always null: just carries the req/resp return-type info for unmarshal-result-on-response
         param: TParam,
-
-        /// fn (TCtx, Ret(TRet)) !void,
-        then_fn_ptr: usize,
+        then_fn_ptr: usize, // fn (TCtx, Ret(TRet)) void
     };
 }
 
-fn WithRetType(comptime T: type) type {
-    return @typeInfo(@typeInfo(std.meta.declarationInfo(T, "then").data.Fn.fn_type).Fn.args[1].arg_type.?).Union.fields[0].field_type;
+fn RetType(comptime T: type) type {
+    const TArg = @typeInfo(std.meta.declarationInfo(T, "then").data.Fn.fn_type).Fn.args[1].arg_type.?;
+    return @typeInfo(TArg).Union.fields[std.meta.fieldIndex(TArg, "ok").?].field_type;
 }
 
-pub fn With(in: var, comptime TThen: type) Req(@TypeOf(in), WithRetType(TThen)) {
-    return WithRet(in, WithRetType(TThen), TThen);
+pub fn With(in: var, comptime TThenStruct: type) Req(@TypeOf(in), RetType(TThenStruct)) {
+    return WithRet(in, RetType(TThenStruct), TThenStruct);
 }
 
-pub fn WithRet(in: var, comptime TRet: type, comptime TThen: type) Req(@TypeOf(in), TRet) {
+pub fn WithRet(in: var, comptime TRet: type, comptime TThenStruct: type) Req(@TypeOf(in), TRet) {
+    // comptime var TFunc: type = @TypeOf(TThenStruct.then); // fn([]const u8, types.Ret(f32)) void
+    // var fn_ref: TFunc = TThenStruct.then;
+    // var fn_ptr = @ptrToInt(fn_ref);
+    // var ret: Req(@TypeOf(in), TRet) = undefined;
+    // ret.t_ret = null;
+    // ret.param = in;
+    // ret.then_fn_ptr = fn_ptr;
     return Req(@TypeOf(in), TRet){
         .param = in,
-        .then_fn_ptr = @ptrToInt(TThen.then),
+        .then_fn_ptr = @ptrToInt(TThenStruct.then),
     };
 }
 

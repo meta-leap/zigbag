@@ -18,11 +18,11 @@ const our_api = Spec{
 
     .RequestOut = union(enum) {
         pow2: Req(i64, i64),
-        rnd: Req(void, f32),
-        add: Req(struct {
-            a: i64,
-            b: i64,
-        }, i64),
+        rnd: Req(bool, f32),
+        // add: Req(struct {
+        //     a: i64,
+        //     b: i64,
+        // }, i64),
     },
 
     .NotifyIn = union(enum) {
@@ -62,22 +62,23 @@ test "demo" {
     try our_rpc.incoming("{ \"id\": 2, \"method\": \"hostName\" }");
     try our_rpc.incoming("{ \"id\": 3, \"method\": \"negate\", \"params\": 42.42 }");
 
-    try our_rpc.request(.rnd, "rnd gave:", With({}, struct {
-        pub fn then(ctx: String, in: Ret(f32)) anyerror!void {
-            std.debug.warn(fmt_ritzy, .{ ctx, in.ok });
+    try our_rpc.request(.rnd, @intCast(i16, 12321), With(true, struct {
+        pub fn then(ctx: i16, in: Ret(f32)) void {
+            std.debug.warn(fmt_ritzy, .{ ctx, in });
         }
     }));
 
     try our_rpc.incoming("{ \"method\": \"timeInfo\", \"params\": {\"start\": 123, \"now\": 321} }");
     try our_rpc.incoming("{ \"id\": \"demo_req_id_1\", \"result\": 123.456 }");
 
-    try our_rpc.request(.pow2, "pow2 gave: ", With(time_now, struct {
-        pub fn then(ctx: String, in: Ret(i64)) anyerror!void {
-            std.debug.warn(fmt_ritzy, .{ ctx, in.ok });
+    try our_rpc.request(.pow2, @intCast(i16, 12121), With(time_now, struct {
+        pub fn then(ctx: i16, in: Ret(i64)) void {
+            std.debug.warn(fmt_ritzy, .{ ctx, in });
         }
     }));
 
-    try our_rpc.notify(.envVarNames, {}, try demo_envVarNames());
+    try our_rpc.notify(.shoutOut, true);
+    try our_rpc.notify(.envVarNames, try demo_envVarNames());
 
     try our_rpc.incoming("{ \"id\": \"demo_req_id_2\", \"error\": { \"code\": 12345, \"message\": \"No pow2 to you!\" } }");
     try our_rpc.incoming("{ \"method\": \"shuttingDown\" }");

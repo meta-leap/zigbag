@@ -35,8 +35,9 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
             }
         }
 
-        pub fn notify(self: *@This(), comptime tag: @TagType(spec.NotifyOut), req_ctx: var, payload: @memberType(spec.NotifyOut, @enumToInt(tag))) !void {
-            return self.out(spec.NotifyOut, tag, req_ctx, payload);
+        pub fn notify(self: *@This(), comptime tag: @TagType(spec.NotifyOut), payload: @memberType(spec.NotifyOut, @enumToInt(tag))) !void {
+            var nil: void = undefined;
+            return self.out(spec.NotifyOut, tag, nil, payload);
         }
 
         pub fn request(self: *@This(), comptime tag: @TagType(spec.RequestOut), req_ctx: var, payload: @memberType(spec.RequestOut, @enumToInt(tag))) !void {
@@ -53,7 +54,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
             arr[idx] = fn_ptr;
         }
 
-        pub fn out(self: *@This(), comptime T: type, comptime tag: @TagType(T), req_ctx: var, payload: @memberType(T, @enumToInt(tag))) !void {
+        fn out(self: *@This(), comptime T: type, comptime tag: @TagType(T), req_ctx: var, payload: @memberType(T, @enumToInt(tag))) !void {
             const is_request = (T == spec.RequestOut);
             comptime std.debug.assert(is_request or T == spec.NotifyOut);
 
@@ -77,11 +78,12 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
 
                 if (self.__.handlers_responses == null)
                     self.__.handlers_responses = try std.ArrayList(InternalState.ResponseAwaiter).initCapacity(self.mem_alloc_for_arenas, 8);
-                const ctx = try mem_keep.allocator.create(@TypeOf(req_ctx));
+                var ctx = try mem_keep.allocator.create(@TypeOf(req_ctx));
                 ctx.* = req_ctx;
                 try self.__.handlers_responses.?.append(InternalState.ResponseAwaiter{
                     .mem_arena = mem_keep,
                     .req_id = req_id,
+                    .req_union_idx = idx,
                     .ptr_ctx = @ptrToInt(ctx),
                     .ptr_fn = payload.then_fn_ptr,
                 });
@@ -144,13 +146,13 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                                 else if (@typeId(param_type) == .Optional)
                                     null
                                 else
-                                    return error.MsgNotifyInParamsMissing;
+                                    return error.MsgParamsMissing;
                                 const fn_ptr = @intToPtr(spec_field.field_type, fn_ptr_uint);
                                 fn_ptr(.{ .it = param_val, .mem = &mem_local.allocator });
                             }
                             return;
                         };
-                    return error.MsgNotifyInUnknownMethod;
+                    return error.MsgUnknownMethod;
                 },
 
                 .request => {
@@ -166,7 +168,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                                 else if (@typeId(param_type) == .Optional)
                                     null
                                 else
-                                    return error.MsgRequestInParamsMissing;
+                                    return error.MsgParamsMissing;
                                 const fn_ptr = @intToPtr(spec_field.field_type, fn_ptr_uint);
                                 const fn_ret = fn_ptr(.{ .it = param_val, .mem = &mem_local.allocator });
                                 const json_out_bytes_in_shared_buf = try self.__.dumpJsonValueToSharedBuf(self.mem_alloc_for_arenas, &(try json.marshal(&mem_local, fn_ret.toJsonRpcResponse(msg.id), json_options)), tmp_json_depth);
@@ -182,23 +184,36 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                 },
 
                 .response => {
-                    if (self.__.handlers_responses) |*handlers_responses| for (handlers_responses.items[0..handlers_responses.len]) |*response_awaiter, i| {
-                        if (@import("./xstd.json.zig").eql(response_awaiter.req_id, msg.id.?.*)) {
-                            // if (std.mem.eql(u8, "demo_req_id_2", req_id.String)) {
-                            //     const then = @intToPtr(fn ( []const u8, Ret(i64)) anyerror!void, payload.then_fn_ptr);
-                            //     try then(ctx.*, Ret(i64){ .ok = @intCast(i64, 12345) });
-                            // } else if (std.mem.eql(u8, "demo_req_id_1", req_id.String)) {
-                            //     const then = @intToPtr(fn ( []const u8, Ret(f32)) anyerror!void, payload.then_fn_ptr);
-                            //     try then(ctx.*, Ret(f32){ .ok = @floatCast(f32, 123.45) });
-                            // }
-                            std.debug.warn("\n\nFOOOOOUND\t{}\n\n\n", .{msg.id.?});
-
-                            response_awaiter.mem_arena.deinit(); // TODO! errdefer also if we try above
-                            _ = handlers_responses.swapRemove(i);
-                            return;
+                    if (self.__.handlers_responses) |*handlers_responses| {
+                        for (handlers_responses.items[0..handlers_responses.len]) |*response_awaiter, i| {
+                            if (@import("./xstd.json.zig").eql(response_awaiter.req_id, msg.id.?.*)) {
+                                defer {
+                                    response_awaiter.mem_arena.deinit();
+                                    _ = handlers_responses.swapRemove(i);
+                                }
+                                comptime var TResponse: type = undefined;
+                                comptime var TThenFunc: type = undefined;
+                                inline for (@typeInfo(spec.RequestOut).Union.fields) |*spec_field, idx| {
+                                    if (response_awaiter.req_union_idx == idx) {
+                                        TResponse = @typeInfo(@typeInfo(@typeInfo(spec_field.field_type).Struct.fields[0].field_type).Optional.child).Pointer.child;
+                                        TThenFunc = fn (i16, Ret(TResponse)) void;
+                                        var fn_arg: Ret(TResponse) = undefined;
+                                        if (msg.result_err) |err|
+                                            fn_arg = Ret(TResponse){ .err = err }
+                                        else if (msg.result_ok) |ret|
+                                            fn_arg = Ret(TResponse){ .ok = try json.unmarshal(TResponse, &response_awaiter.mem_arena, ret, json_options) }
+                                        else
+                                            fn_arg = Ret(TResponse){ .err = ResponseError{ .code = 0, .message = "unreachable" } }; // unreachable; // TODO! Zig currently segfaults here, check back later
+                                        var fn_then = @intToPtr(TThenFunc, response_awaiter.ptr_fn);
+                                        fn_then(@intCast(i16, 32123), fn_arg);
+                                        return;
+                                    }
+                                }
+                                return error.MsgUnknownReqId;
+                            }
                         }
-                    };
-                    return error.MsgResponseInUnknownReqId;
+                    }
+                    return error.MsgUnknownReqId;
                 },
             }
         }
@@ -207,6 +222,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
             const ResponseAwaiter = struct {
                 mem_arena: std.heap.ArenaAllocator,
                 req_id: std.json.Value,
+                req_union_idx: usize,
                 ptr_ctx: usize,
                 ptr_fn: usize,
             };

@@ -130,15 +130,15 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
             .Float => |jfloat| if (jfloat < @intToFloat(f64, std.math.minInt(T)) or jfloat > @intToFloat(f64, std.math.maxInt(T)))
                 error.MalformedInput
             else
-                @floatToInt(T, jfloat),
-            .String => |jstr| std.fmt.parseInt(T, jstr, 10) catch error.MalformedInput,
+                @intCast(T, @floatToInt(T, jfloat)),
+            .String => |jstr| if (std.fmt.parseInt(T, jstr, 10)) |ok| @intCast(T, ok) else |_| error.MalformedInput,
             else => error.MalformedInput,
         }
     else if (type_id == .Float)
         return switch (from.*) {
-            .Float => |jfloat| jfloat,
-            .Integer => |jint| @intToFloat(T, jint),
-            .String => |jstr| std.fmt.parseFloat(T, jstr) catch error.MalformedInput,
+            .Float => |jfloat| @floatCast(T, jfloat),
+            .Integer => |jint| @floatCast(T, @intToFloat(T, jint)),
+            .String => |jstr| if (std.fmt.parseFloat(T, jstr)) |ok| @floatCast(T, ok) else |_| error.MalformedInput,
             else => error.MalformedInput,
         }
     else if (type_id == .Enum) {
@@ -195,7 +195,7 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
                             @field(ret, field_name) = try unmarshal(field_type, mem, jval, options)
                         else if (options.err_on_missing_nonvoid_nonoptional_fields) {
                             // return error.MissingField;
-                            // TODO! above err-return currently segfaults the compiler, check back again later with future Zig releases.
+                            // TODO! Zig currently segfaults here, check back later
                         }
                     }
                     return ret;
