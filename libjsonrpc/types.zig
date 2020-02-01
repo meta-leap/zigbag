@@ -27,13 +27,6 @@ pub const Spec = struct {
     NotifyOut: type,
 };
 
-pub fn Req(comptime TParam: type, comptime TRet: type) type {
-    return struct {
-        param: TParam,
-        pub const Result = TRet;
-    };
-}
-
 pub fn Arg(comptime T: type) type {
     return struct {
         it: T,

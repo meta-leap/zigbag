@@ -39,7 +39,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
             return self.out(spec.NotifyOut, tag, undefined, param, null);
         }
 
-        pub fn request(self: *@This(), comptime tag: @TagType(spec.RequestOut), req_ctx: var, param: @typeInfo(@memberType(spec.RequestOut, @enumToInt(tag))).Struct.fields[0].field_type, comptime ThenStruct: type) !void {
+        pub fn request(self: *@This(), comptime tag: @TagType(spec.RequestOut), req_ctx: var, param: @typeInfo(@typeInfo(@memberType(spec.RequestOut, @enumToInt(tag))).Fn.args[0].arg_type.?).Struct.fields[0].field_type, comptime ThenStruct: type) !void {
             return self.out(spec.RequestOut, tag, req_ctx, param, ThenStruct);
         }
 
@@ -77,8 +77,16 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                 if (self.__.handlers_responses == null)
                     self.__.handlers_responses = try std.ArrayList(InternalState.ResponseAwaiter).initCapacity(self.mem_alloc_for_arenas, 8);
 
-                const ReqCtx = @typeInfo(@TypeOf(ThenStruct.?.then)).Fn.args[0].arg_type orelse
-                    @compileError("your `then`s arg 0 must have a non-`var` (pointer) type");
+                const fn_info_then = @typeInfo(@TypeOf(ThenStruct.?.then)).Fn;
+                comptime {
+                    std.debug.assert(fn_info_then.args.len == 3);
+                    std.debug.assert(fn_info_then.args[0].arg_type != null);
+                    std.debug.assert(fn_info_then.args[1].arg_type != null);
+                    std.debug.assert(fn_info_then.args[1].arg_type.? == @typeInfo(std.meta.fieldInfo(T, method_member_name).field_type).Fn.return_type.?);
+                    std.debug.assert(fn_info_then.args[2].arg_type != null);
+                    std.debug.assert(fn_info_then.args[2].arg_type.? == *std.mem.Allocator);
+                }
+                const ReqCtx = fn_info_then.args[0].arg_type.?;
                 if (@typeId(ReqCtx) != .Pointer and ReqCtx != void)
                     @compileError("your `then`s arg 0 must have a pointer type");
                 const ReqCtxVal = if (ReqCtx == void) void else @typeInfo(ReqCtx).Pointer.child;
@@ -200,7 +208,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                                 }
                                 inline for (@typeInfo(spec.RequestOut).Union.fields) |*spec_field, idx| {
                                     if (response_awaiter.req_union_idx == idx) {
-                                        const TResponse = std.meta.declarationInfo(spec_field.field_type, "Result").data.Type;
+                                        const TResponse = @typeInfo(@typeInfo(spec_field.field_type).Fn.return_type.?).Union.fields[0].field_type;
                                         const fn_arg = if (msg.result_err) |err|
                                             Ret(TResponse){ .err = err }
                                         else if (msg.result_ok) |ret|

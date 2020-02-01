@@ -21,9 +21,9 @@ const our_api = Spec{
     },
 
     .RequestOut = union(enum) {
-        pow2: Req(i64, i64),
-        rnd: Req(void, f32),
-        add: Req(?AddArgs, ?i64),
+        pow2: fn (Arg(i64)) Ret(i64),
+        rnd: fn (Arg(void)) Ret(f32),
+        add: fn (Arg(?AddArgs)) Ret(?i64),
     },
 
     .NotifyIn = union(enum) {
