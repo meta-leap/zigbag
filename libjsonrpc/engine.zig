@@ -15,13 +15,13 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
     });
 
     return struct {
-        force_single_threaded: bool = @import("builtin").single_threaded,
+        // force_single_threaded: bool = @import("builtin").single_threaded,
         mem_alloc_for_arenas: *std.mem.Allocator,
         onOutgoing: fn ([]const u8) void,
 
         __: InternalState = InternalState{
-            .handlers_notifies = ([_]?usize{null}) ** @memberCount(spec.NotifyIn),
-            .handlers_requests = ([_]?usize{null}) ** @memberCount(spec.RequestIn),
+            .handlers_notifies = [_]?usize{null} ** @memberCount(spec.NotifyIn),
+            .handlers_requests = [_]?usize{null} ** @memberCount(spec.RequestIn),
         },
 
         pub fn deinit(self: *const @This()) void {
@@ -76,13 +76,22 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
 
                 if (self.__.handlers_responses == null)
                     self.__.handlers_responses = try std.ArrayList(InternalState.ResponseAwaiter).initCapacity(self.mem_alloc_for_arenas, 8);
-                var ctx = try mem_keep.allocator.create(@TypeOf(req_ctx));
-                ctx.* = req_ctx;
+
+                const ReqCtx = @typeInfo(@TypeOf(ThenStruct.?.then)).Fn.args[0].arg_type orelse
+                    @compileError("your `then`s arg 0 must have a non-`var` (pointer) type");
+                if (@typeId(ReqCtx) != .Pointer and ReqCtx != void)
+                    @compileError("your `then`s arg 0 must have a pointer type");
+                const ReqCtxVal = if (ReqCtx == void) void else @typeInfo(ReqCtx).Pointer.child;
+                var ctx: *ReqCtxVal = undefined;
+                if (ReqCtxVal != void) {
+                    ctx = try mem_keep.allocator.create(ReqCtxVal);
+                    ctx.* = if (@typeId(@TypeOf(ReqCtx)) == .Pointer) req_ctx.* else req_ctx;
+                }
                 try self.__.handlers_responses.?.append(InternalState.ResponseAwaiter{
                     .mem_arena = mem_keep,
                     .req_id = req_id,
                     .req_union_idx = idx,
-                    .ptr_ctx = @ptrToInt(ctx),
+                    .ptr_ctx = if (@sizeOf(ReqCtxVal) == 0) 0 else @ptrToInt(ctx),
                     .ptr_fn = @ptrToInt(ThenStruct.?.then),
                 });
             }
@@ -192,7 +201,8 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                                 inline for (@typeInfo(spec.RequestOut).Union.fields) |*spec_field, idx| {
                                     if (response_awaiter.req_union_idx == idx) {
                                         const TResponse = std.meta.declarationInfo(spec_field.field_type, "Result").data.Type;
-                                        const TThenFunc = fn (i16, Ret(TResponse)) void;
+                                        const TThenFuncCtxHave = fn (usize, Ret(TResponse)) void;
+                                        const TThenFuncCtxVoid = fn (void, Ret(TResponse)) void;
                                         var fn_arg: Ret(TResponse) = undefined;
                                         if (msg.result_err) |err|
                                             fn_arg = Ret(TResponse){ .err = err }
@@ -200,8 +210,14 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                                             fn_arg = Ret(TResponse){ .ok = try json.unmarshal(TResponse, &response_awaiter.mem_arena, ret, json_options) }
                                         else
                                             fn_arg = Ret(TResponse){ .err = ResponseError{ .code = 0, .message = "unreachable" } }; // unreachable; // TODO! Zig currently segfaults here, check back later
-                                        var fn_then = @intToPtr(TThenFunc, response_awaiter.ptr_fn);
-                                        fn_then(@intCast(i16, 32123), fn_arg);
+
+                                        if (response_awaiter.ptr_ctx == 0) {
+                                            var fn_then = @intToPtr(TThenFuncCtxVoid, response_awaiter.ptr_fn);
+                                            fn_then(undefined, fn_arg);
+                                        } else {
+                                            var fn_then = @intToPtr(TThenFuncCtxHave, response_awaiter.ptr_fn);
+                                            fn_then(response_awaiter.ptr_ctx, fn_arg);
+                                        }
                                         return;
                                     }
                                 }
