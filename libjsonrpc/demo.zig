@@ -7,6 +7,10 @@ const String = []const u8;
 const fmt_ritzy = "\n\n=== {} ===\n{}\n";
 var mem = std.heap.ArenaAllocator.init(std.heap.page_allocator); // outside of `zig test` should of course `defer .deinit()`...
 
+const AddArgs = struct {
+    a: i64,
+    b: i64,
+};
 const our_api = Spec{
     .newReqId = nextReqId,
 
@@ -18,11 +22,8 @@ const our_api = Spec{
 
     .RequestOut = union(enum) {
         pow2: Req(i64, i64),
-        rnd: Req(bool, f32),
-        // add: Req(struct {
-        //     a: i64,
-        //     b: i64,
-        // }, i64),
+        rnd: Req(void, f32),
+        add: Req(?AddArgs, ?i64),
     },
 
     .NotifyIn = union(enum) {
@@ -62,20 +63,28 @@ test "demo" {
     try our_rpc.incoming("{ \"id\": 2, \"method\": \"hostName\" }");
     try our_rpc.incoming("{ \"id\": 3, \"method\": \"negate\", \"params\": 42.42 }");
 
-    try our_rpc.request(.rnd, @intCast(i16, 12321), With(true, struct {
+    try our_rpc.request(.rnd, @intCast(i16, 12321), {}, struct {
         pub fn then(ctx: i16, in: Ret(f32)) void {
-            std.debug.warn(fmt_ritzy, .{ ctx, in });
+            std.debug.warn(fmt_ritzy, .{ "rnd gave:", in });
         }
-    }));
+    });
 
     try our_rpc.incoming("{ \"method\": \"timeInfo\", \"params\": {\"start\": 123, \"now\": 321} }");
     try our_rpc.incoming("{ \"id\": \"demo_req_id_1\", \"result\": 123.456 }");
 
-    try our_rpc.request(.pow2, @intCast(i16, 12121), With(time_now, struct {
+    try our_rpc.request(.pow2, @intCast(i16, 12121), time_now, struct {
         pub fn then(ctx: i16, in: Ret(i64)) void {
-            std.debug.warn(fmt_ritzy, .{ ctx, in });
+            std.debug.warn(fmt_ritzy, .{ "pow2 gave:", in });
         }
-    }));
+    });
+
+    try our_rpc.request(.add, @intCast(i16, 23232), AddArgs{ .a = 42, .b = 23 }, struct {
+        pub fn then(ctx: i16, in: Ret(?i64)) void {
+            std.debug.warn(fmt_ritzy, .{ "add gave:", in });
+        }
+    });
+
+    try our_rpc.incoming("{ \"id\": \"demo_req_id_3\", \"result\": 65 }");
 
     try our_rpc.notify(.shoutOut, true);
     try our_rpc.notify(.envVarNames, try demo_envVarNames());

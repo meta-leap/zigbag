@@ -35,13 +35,12 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
             }
         }
 
-        pub fn notify(self: *@This(), comptime tag: @TagType(spec.NotifyOut), payload: @memberType(spec.NotifyOut, @enumToInt(tag))) !void {
-            var nil: void = undefined;
-            return self.out(spec.NotifyOut, tag, nil, payload);
+        pub fn notify(self: *@This(), comptime tag: @TagType(spec.NotifyOut), param: @memberType(spec.NotifyOut, @enumToInt(tag))) !void {
+            return self.out(spec.NotifyOut, tag, undefined, param, null);
         }
 
-        pub fn request(self: *@This(), comptime tag: @TagType(spec.RequestOut), req_ctx: var, payload: @memberType(spec.RequestOut, @enumToInt(tag))) !void {
-            return self.out(spec.RequestOut, tag, req_ctx, payload);
+        pub fn request(self: *@This(), comptime tag: @TagType(spec.RequestOut), req_ctx: var, param: @typeInfo(@memberType(spec.RequestOut, @enumToInt(tag))).Struct.fields[0].field_type, comptime ThenStruct: type) !void {
+            return self.out(spec.RequestOut, tag, req_ctx, param, ThenStruct);
         }
 
         pub fn on(self: *@This(), comptime handler: var) void {
@@ -54,7 +53,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
             arr[idx] = fn_ptr;
         }
 
-        fn out(self: *@This(), comptime T: type, comptime tag: @TagType(T), req_ctx: var, payload: @memberType(T, @enumToInt(tag))) !void {
+        fn out(self: *@This(), comptime T: type, comptime tag: @TagType(T), req_ctx: var, param: var, comptime ThenStruct: ?type) !void {
             const is_request = (T == spec.RequestOut);
             comptime std.debug.assert(is_request or T == spec.NotifyOut);
 
@@ -65,7 +64,6 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
             const method_member_name = @memberName(T, idx);
 
             var out_msg = std.json.Value{ .Object = std.json.ObjectMap.init(&mem_local.allocator) };
-            const param = if (is_request) payload.param else payload;
             if (@TypeOf(param) != void)
                 _ = try out_msg.Object.put("params", try json.marshal(&mem_local, param, json_options));
             _ = try out_msg.Object.put("jsonrpc", .{ .String = "2.0" });
@@ -85,7 +83,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                     .req_id = req_id,
                     .req_union_idx = idx,
                     .ptr_ctx = @ptrToInt(ctx),
-                    .ptr_fn = payload.then_fn_ptr,
+                    .ptr_fn = @ptrToInt(ThenStruct.?.then),
                 });
             }
             const json_out_bytes_in_shared_buf = try self.__.dumpJsonValueToSharedBuf(self.mem_alloc_for_arenas, &out_msg, tmp_json_depth);
@@ -138,7 +136,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                         if (std.mem.eql(u8, spec_field.name, msg.method)) {
                             if (self.__.handlers_notifies[idx]) |fn_ptr_uint| {
                                 const fn_type = @typeInfo(spec_field.field_type).Fn;
-                                const param_type = @typeInfo(fn_type.args[0].arg_type.?).Struct.fields[0].field_type;
+                                const param_type = @typeInfo(fn_type.args[0].arg_type.?).Struct.fields[std.meta.fieldIndex(fn_type.args[0].arg_type.?, "it").?].field_type;
                                 const param_val: param_type = if (msg.params) |params|
                                     try json.unmarshal(param_type, &mem_local, params, json_options)
                                 else if (param_type == void)
@@ -160,7 +158,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                         if (std.mem.eql(u8, spec_field.name, msg.method)) {
                             if (self.__.handlers_requests[idx]) |fn_ptr_uint| {
                                 const fn_type = @typeInfo(spec_field.field_type).Fn;
-                                const param_type = @typeInfo(fn_type.args[0].arg_type.?).Struct.fields[0].field_type;
+                                const param_type = @typeInfo(fn_type.args[0].arg_type.?).Struct.fields[std.meta.fieldIndex(fn_type.args[0].arg_type.?, "it").?].field_type;
                                 const param_val: param_type = if (msg.params) |params|
                                     try json.unmarshal(param_type, &mem_local, params, json_options)
                                 else if (param_type == void)
@@ -191,12 +189,10 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                                     response_awaiter.mem_arena.deinit();
                                     _ = handlers_responses.swapRemove(i);
                                 }
-                                comptime var TResponse: type = undefined;
-                                comptime var TThenFunc: type = undefined;
                                 inline for (@typeInfo(spec.RequestOut).Union.fields) |*spec_field, idx| {
                                     if (response_awaiter.req_union_idx == idx) {
-                                        TResponse = @typeInfo(@typeInfo(@typeInfo(spec_field.field_type).Struct.fields[0].field_type).Optional.child).Pointer.child;
-                                        TThenFunc = fn (i16, Ret(TResponse)) void;
+                                        const TResponse = std.meta.declarationInfo(spec_field.field_type, "Result").data.Type;
+                                        const TThenFunc = fn (i16, Ret(TResponse)) void;
                                         var fn_arg: Ret(TResponse) = undefined;
                                         if (msg.result_err) |err|
                                             fn_arg = Ret(TResponse){ .err = err }

@@ -104,7 +104,7 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var, comptime options: Optio
 
 pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const std.json.Value, comptime options: Options) error{
     MissingField,
-    MalformedInput,
+    UnexpectedInputValueFormat,
     OutOfMemory,
 }!T {
     const type_id = comptime @typeId(T);
@@ -116,50 +116,50 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
     else if (T == []const u8 or T == []u8)
         return switch (from.*) {
             .String => |jstr| jstr,
-            else => error.MalformedInput,
+            else => error.UnexpectedInputValueFormat,
         }
     else if (T == bool)
         return switch (from.*) {
             .Bool => |jbool| jbool,
-            .String => |jstr| if (std.mem.eql(u8, "true", jstr)) true else (if (std.mem.eql(u8, "false", jstr)) false else error.MalformedInput),
-            else => error.MalformedInput,
+            .String => |jstr| if (std.mem.eql(u8, "true", jstr)) true else (if (std.mem.eql(u8, "false", jstr)) false else error.UnexpectedInputValueFormat),
+            else => error.UnexpectedInputValueFormat,
         }
     else if (type_id == .Int)
         return switch (from.*) {
             .Integer => |jint| @intCast(T, jint),
             .Float => |jfloat| if (jfloat < @intToFloat(f64, std.math.minInt(T)) or jfloat > @intToFloat(f64, std.math.maxInt(T)))
-                error.MalformedInput
+                error.UnexpectedInputValueFormat
             else
                 @intCast(T, @floatToInt(T, jfloat)),
-            .String => |jstr| if (std.fmt.parseInt(T, jstr, 10)) |ok| @intCast(T, ok) else |_| error.MalformedInput,
-            else => error.MalformedInput,
+            .String => |jstr| if (std.fmt.parseInt(T, jstr, 10)) |ok| @intCast(T, ok) else |_| error.UnexpectedInputValueFormat,
+            else => error.UnexpectedInputValueFormat,
         }
     else if (type_id == .Float)
         return switch (from.*) {
             .Float => |jfloat| @floatCast(T, jfloat),
             .Integer => |jint| @floatCast(T, @intToFloat(T, jint)),
-            .String => |jstr| if (std.fmt.parseFloat(T, jstr)) |ok| @floatCast(T, ok) else |_| error.MalformedInput,
-            else => error.MalformedInput,
+            .String => |jstr| if (std.fmt.parseFloat(T, jstr)) |ok| @floatCast(T, ok) else |_| error.UnexpectedInputValueFormat,
+            else => error.UnexpectedInputValueFormat,
         }
     else if (type_id == .Enum) {
         const TEnum = std.meta.TagType(T);
         return switch (from.*) {
-            .Integer => |jint| std.meta.intToEnum(T, jint) catch error.MalformedInput,
-            .String => |jstr| std.meta.stringToEnum(T, jstr) orelse (if (std.fmt.parseInt(TEnum, jstr, 10)) |i| (std.meta.intToEnum(T, i) catch error.MalformedInput) else |_| error.MalformedInput),
+            .Integer => |jint| std.meta.intToEnum(T, jint) catch error.UnexpectedInputValueFormat,
+            .String => |jstr| std.meta.stringToEnum(T, jstr) orelse (if (std.fmt.parseInt(TEnum, jstr, 10)) |i| (std.meta.intToEnum(T, i) catch error.UnexpectedInputValueFormat) else |_| error.UnexpectedInputValueFormat),
             .Float => |jfloat| if (jfloat < @intToFloat(f64, std.math.minInt(TEnum)) or jfloat > @intToFloat(f64, std.math.maxInt(TEnum)))
-                error.MalformedInput
+                error.UnexpectedInputValueFormat
             else
-                std.meta.intToEnum(T, @floatToInt(TEnum, jfloat)) catch error.MalformedInput,
-            else => error.MalformedInput,
+                std.meta.intToEnum(T, @floatToInt(TEnum, jfloat)) catch error.UnexpectedInputValueFormat,
+            else => error.UnexpectedInputValueFormat,
         };
     } else if (type_id == .Void) switch (from.*) {
         .Null => return {},
-        else => return error.MalformedInput,
+        else => return error.UnexpectedInputValueFormat,
     } else if (type_id == .Optional) switch (from.*) {
         .Null => return null,
         else => if (unmarshal(type_info.Optional.child, mem, from, options)) |ok|
             return ok
-        else |err| if (err == error.MalformedInput and comptime options.set_optionals_null_on_bad_inputs)
+        else |err| if (err == error.UnexpectedInputValueFormat and comptime options.set_optionals_null_on_bad_inputs)
             return null
         else
             return err,
@@ -174,7 +174,7 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
                     ret[i] = try unmarshal(type_info.Pointer.child, mem, jval, options);
                 return ret;
             },
-            else => return error.MalformedInput,
+            else => return error.UnexpectedInputValueFormat,
         }
     } else if (type_id == .Struct) {
         switch (from.*) {
@@ -201,7 +201,7 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
                     return ret;
                 }
             },
-            else => return error.MalformedInput,
+            else => return error.UnexpectedInputValueFormat,
         }
     } else
         @compileError("please file an issue to support JSON-unmarshaling into: " ++ @typeName(T));

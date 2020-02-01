@@ -29,32 +29,8 @@ pub const Spec = struct {
 
 pub fn Req(comptime TParam: type, comptime TRet: type) type {
     return struct {
-        t_ret: ?*TRet = null, // never "used" (as a value), always null: just carries the req/resp return-type info for unmarshal-result-on-response
         param: TParam,
-        then_fn_ptr: usize, // fn (TCtx, Ret(TRet)) void
-    };
-}
-
-fn RetType(comptime T: type) type {
-    const TArg = @typeInfo(std.meta.declarationInfo(T, "then").data.Fn.fn_type).Fn.args[1].arg_type.?;
-    return @typeInfo(TArg).Union.fields[std.meta.fieldIndex(TArg, "ok").?].field_type;
-}
-
-pub fn With(in: var, comptime TThenStruct: type) Req(@TypeOf(in), RetType(TThenStruct)) {
-    return WithRet(in, RetType(TThenStruct), TThenStruct);
-}
-
-pub fn WithRet(in: var, comptime TRet: type, comptime TThenStruct: type) Req(@TypeOf(in), TRet) {
-    // comptime var TFunc: type = @TypeOf(TThenStruct.then); // fn([]const u8, types.Ret(f32)) void
-    // var fn_ref: TFunc = TThenStruct.then;
-    // var fn_ptr = @ptrToInt(fn_ref);
-    // var ret: Req(@TypeOf(in), TRet) = undefined;
-    // ret.t_ret = null;
-    // ret.param = in;
-    // ret.then_fn_ptr = fn_ptr;
-    return Req(@TypeOf(in), TRet){
-        .param = in,
-        .then_fn_ptr = @ptrToInt(TThenStruct.then),
+        pub const Result = TRet;
     };
 }
 
