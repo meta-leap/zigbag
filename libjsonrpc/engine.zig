@@ -104,7 +104,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                 });
             }
             const json_out_bytes_in_shared_buf = try self.__.dumpJsonValueToSharedBuf(self.mem_alloc_for_arenas, &out_msg, tmp_json_depth);
-            self.onOutgoing(try std.mem.dupe(&mem_local.allocator, u8, json_out_bytes_in_shared_buf));
+            self.onOutgoing(json_out_bytes_in_shared_buf); // try std.mem.dupe(&mem_local.allocator, u8, json_out_bytes_in_shared_buf));
         }
 
         pub fn incoming(self: *@This(), full_incoming_jsonrpc_msg_payload: []const u8) !void {
@@ -187,7 +187,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                                 const fn_ptr = @intToPtr(spec_field.field_type, fn_ptr_uint);
                                 const fn_ret = fn_ptr(.{ .it = param_val, .mem = &mem_local.allocator });
                                 const json_out_bytes_in_shared_buf = try self.__.dumpJsonValueToSharedBuf(self.mem_alloc_for_arenas, &(try json.marshal(&mem_local, fn_ret.toJsonRpcResponse(msg.id), json_options)), tmp_json_depth);
-                                return self.onOutgoing(try std.mem.dupe(&mem_local.allocator, u8, json_out_bytes_in_shared_buf));
+                                return self.onOutgoing(json_out_bytes_in_shared_buf); // try std.mem.dupe(&mem_local.allocator, u8, json_out_bytes_in_shared_buf));
                             }
                             return;
                         };
@@ -195,7 +195,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                         .code = @enumToInt(ErrorCodes.MethodNotFound),
                         .message = msg.method,
                     }, json_options)), tmp_json_depth);
-                    return self.onOutgoing(try std.mem.dupe(&mem_local.allocator, u8, json_out_bytes_in_shared_buf));
+                    return self.onOutgoing(json_out_bytes_in_shared_buf); // try std.mem.dupe(&mem_local.allocator, u8, json_out_bytes_in_shared_buf));
                 },
 
                 .response => {
