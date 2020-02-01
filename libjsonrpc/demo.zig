@@ -5,7 +5,7 @@ usingnamespace @import("./types.zig");
 const String = []const u8;
 
 const fmt_ritzy = "\n\n=== {} ===\n{}\n";
-var mem = std.heap.ArenaAllocator.init(std.heap.page_allocator); // outside of `zig test` should of course `defer .deinit()`...
+var mem_demo = std.heap.ArenaAllocator.init(std.heap.page_allocator); // outside of `zig test` should of course `defer .deinit()`...
 
 const AddArgs = struct {
     a: i64,
@@ -64,7 +64,7 @@ test "demo" {
     try our_rpc.incoming("{ \"id\": 3, \"method\": \"negate\", \"params\": 42.42 }");
 
     try our_rpc.request(.rnd, false, {}, struct {
-        pub fn then(ctx: *bool, in: Ret(f32)) void {
+        pub fn then(ctx: *bool, in: Ret(f32), mem: *std.mem.Allocator) void {
             std.debug.warn(fmt_ritzy, .{ ctx.*, in });
         }
     });
@@ -73,13 +73,13 @@ test "demo" {
     try our_rpc.incoming("{ \"id\": \"demo_req_id_1\", \"result\": 123.456 }");
 
     try our_rpc.request(.pow2, @intCast(i40, 12121), time_now, struct {
-        pub fn then(ctx: *i40, in: Ret(i64)) void {
+        pub fn then(ctx: *i40, in: Ret(i64), mem: *std.mem.Allocator) void {
             std.debug.warn(fmt_ritzy, .{ ctx.*, in });
         }
     });
 
     try our_rpc.request(.add, @intCast(i32, 23232), AddArgs{ .a = 42, .b = 23 }, struct {
-        pub fn then(ctx: *i32, in: Ret(?i64)) void {
+        pub fn then(ctx: *i32, in: Ret(?i64), mem: *std.mem.Allocator) void {
             std.debug.warn(fmt_ritzy, .{ ctx.*, in });
         }
     });
@@ -142,7 +142,7 @@ fn on_envVarValue(in: Arg(String)) Ret(String) {
 }
 
 fn demo_envVarNames() ![]String {
-    var ret = try std.ArrayList(String).initCapacity(&mem.allocator, std.os.environ.len);
+    var ret = try std.ArrayList(String).initCapacity(&mem_demo.allocator, std.os.environ.len);
     for (std.os.environ) |name_value_pair, i| {
         const pair = std.mem.toSlice(u8, std.os.environ[i]);
         if (std.mem.indexOfScalar(u8, pair, '=')) |pos|
