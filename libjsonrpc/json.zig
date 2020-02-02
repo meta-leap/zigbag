@@ -173,8 +173,9 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
     };
     if (type_id == .Pointer) {
         if (type_info.Pointer.size != .Slice) {
-            const copy = try unmarshal(type_info.Pointer.child, mem, from, options);
-            return try @import("./xstd.mem.zig").enHeap(&mem.allocator, copy);
+            var ret = try mem.allocator.create(type_info.Pointer.child);
+            ret.* = try unmarshal(type_info.Pointer.child, mem, from, options);
+            return ret;
         }
         switch (from.*) {
             .Array => |jarr| {
