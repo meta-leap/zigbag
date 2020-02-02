@@ -207,7 +207,8 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                                 inline for (@typeInfo(spec.RequestOut).Union.fields) |*spec_field, idx| {
                                     if (response_awaiter.req_union_idx == idx) {
                                         const TResponse = @typeInfo(@typeInfo(spec_field.field_type).Fn.return_type.?).Union.fields[0].field_type;
-                                        const fn_arg = if (msg.result_err) |err|
+
+                                        const fn_arg: Ret(TResponse) = if (msg.result_err) |err|
                                             Ret(TResponse){ .err = err }
                                         else if (msg.result_ok) |ret|
                                             Ret(TResponse){ .ok = try json.unmarshal(TResponse, &response_awaiter.mem_arena, ret, &json_options) }

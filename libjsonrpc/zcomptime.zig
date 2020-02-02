@@ -10,14 +10,6 @@ pub fn copyWithAllNullsSetFrom(comptime T: type, copy_from: *const T, for_nulls_
 }
 
 pub fn isTypeHashMapLikeDuckwise(comptime T: type) bool {
-    // comptime { // assert all the field-name string literals used below haven't changed
-    //     var buf: [1000]u8 = undefined;
-    //     const mem = &std.heap.FixedBufferAllocator.init(&buf).allocator;
-    //     var tmp = std.StringHashMap(i8).init(mem);
-    //     _ = (tmp.put("42", 42) catch unreachable).?;
-    //     var iter = tmp.iterator();
-    //     tmp.deinit();
-    // }
     switch (@typeInfo(T)) {
         else => {},
         .Struct => |*maybe_hashmap_struct_info| inline for (maybe_hashmap_struct_info.decls) |*decl_in_hashmap|

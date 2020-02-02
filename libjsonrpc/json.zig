@@ -62,8 +62,15 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var, comptime options: *cons
         unreachable;
     }
     if (type_id == .Struct) {
+        const is_hashmap = comptime isTypeHashMapLikeDuckwise(T);
+
         var ret = std.json.Value{ .Object = std.json.ObjectMap.init(&mem.allocator) };
-        if (comptime isTypeHashMapLikeDuckwise(T)) {
+        try ret.Object.initCapacity(std.math.ceilPowerOfTwo(usize, (if (is_hashmap)
+            from.count()
+        else
+            @memberCount(T)) * 5 / 3) catch return error.OutOfMemory);
+
+        if (is_hashmap) {
             var iter = from.iterator();
             while (iter.next()) |pair|
                 _ = try ret.Object.put(pair.key, pair.value);
@@ -191,8 +198,7 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
                         else if (jmap.getValue(options.rewriteStructFieldNameToJsonObjectKey.?(T, field_name))) |*jval|
                             @field(ret, field_name) = try unmarshal(field_type, mem, jval, options)
                         else if (options.err_on_missing_nonvoid_nonoptional_fields) {
-                            // return error.MissingField;
-                            // TODO! Zig currently segfaults here, check back later
+                            // return error.MissingField; // TODO! Zig currently segfaults here, check back later
                         }
                     }
                     return ret;
