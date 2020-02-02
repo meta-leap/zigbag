@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub fn copyWithAllNullsSetFrom(comptime T: type, copy_from: *const T, for_nulls_use_fallback_defaults_from: T) T {
+pub fn copyStructWithAllNullsSetFrom(comptime T: type, copy_from: *const T, for_nulls_use_fallback_defaults_from: T) T {
     var copy = copy_from.*;
     inline for (@typeInfo(T).Struct.fields) |*field| if (.Optional == @typeId(field.field_type)) {
         if (null == @field(copy, field.name))
