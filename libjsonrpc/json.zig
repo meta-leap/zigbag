@@ -114,21 +114,21 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
     const type_id = comptime @typeId(T);
     const type_info = comptime @typeInfo(T);
     if (T == *const std.json.Value)
-        return from
-    else if (T == std.json.Value)
-        return from.*
-    else if (T == []const u8 or T == []u8)
+        return from;
+    if (T == std.json.Value)
+        return from.*;
+    if (T == []const u8 or T == []u8)
         return switch (from.*) {
             .String => |jstr| jstr,
             else => error.UnexpectedInputValueFormat,
-        }
-    else if (T == bool)
+        };
+    if (T == bool)
         return switch (from.*) {
             .Bool => |jbool| jbool,
             .String => |jstr| if (std.mem.eql(u8, "true", jstr)) true else (if (std.mem.eql(u8, "false", jstr)) false else error.UnexpectedInputValueFormat),
             else => error.UnexpectedInputValueFormat,
-        }
-    else if (type_id == .Int)
+        };
+    if (type_id == .Int)
         return switch (from.*) {
             .Integer => |jint| @intCast(T, jint),
             .Float => |jfloat| if (jfloat < @intToFloat(f64, std.math.minInt(T)) or jfloat > @intToFloat(f64, std.math.maxInt(T)))
@@ -137,15 +137,15 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
                 @intCast(T, @floatToInt(T, jfloat)),
             .String => |jstr| if (std.fmt.parseInt(T, jstr, 10)) |ok| @intCast(T, ok) else |_| error.UnexpectedInputValueFormat,
             else => error.UnexpectedInputValueFormat,
-        }
-    else if (type_id == .Float)
+        };
+    if (type_id == .Float)
         return switch (from.*) {
             .Float => |jfloat| @floatCast(T, jfloat),
             .Integer => |jint| @floatCast(T, @intToFloat(T, jint)),
             .String => |jstr| if (std.fmt.parseFloat(T, jstr)) |ok| @floatCast(T, ok) else |_| error.UnexpectedInputValueFormat,
             else => error.UnexpectedInputValueFormat,
-        }
-    else if (type_id == .Enum) {
+        };
+    if (type_id == .Enum) {
         const TEnum = std.meta.TagType(T);
         return switch (from.*) {
             .Integer => |jint| std.meta.intToEnum(T, jint) catch error.UnexpectedInputValueFormat,
@@ -156,10 +156,13 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
                 std.meta.intToEnum(T, @floatToInt(TEnum, jfloat)) catch error.UnexpectedInputValueFormat,
             else => error.UnexpectedInputValueFormat,
         };
-    } else if (type_id == .Void) switch (from.*) {
-        .Null => return {},
-        else => return error.UnexpectedInputValueFormat,
-    } else if (type_id == .Optional) switch (from.*) {
+    }
+    if (type_id == .Void)
+        return switch (from.*) {
+            .Null => {},
+            else => error.UnexpectedInputValueFormat,
+        };
+    if (type_id == .Optional) switch (from.*) {
         .Null => return null,
         else => if (unmarshal(type_info.Optional.child, mem, from, options)) |ok|
             return ok
@@ -167,11 +170,13 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
             return null
         else
             return err,
-    } else if (type_id == .Pointer) {
+    };
+    if (type_id == .Pointer) {
         if (type_info.Pointer.size != .Slice) {
             const copy = try unmarshal(type_info.Pointer.child, mem, from, options);
             return try @import("./xstd.mem.zig").enHeap(&mem.allocator, copy);
-        } else switch (from.*) {
+        }
+        switch (from.*) {
             .Array => |jarr| {
                 var ret = try mem.allocator.alloc(type_info.Pointer.child, jarr.len);
                 for (jarr.items[0..jarr.len]) |*jval, i|
@@ -180,34 +185,34 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
             },
             else => return error.UnexpectedInputValueFormat,
         }
-    } else if (type_id == .Struct) {
+    }
+    if (type_id == .Struct) {
         switch (from.*) {
             .Object => |*jmap| {
                 if (comptime isTypeHashMapLikeDuckwise(T))
-                    @compileError("TODO: support JSON-unmarshaling into: " ++ @typeName(T))
-                else {
-                    var ret = @import("./xstd.mem.zig").zeroed(T);
-                    comptime var i = @memberCount(T);
-                    inline while (i > 0) {
-                        i -= 1;
-                        const field_name = @memberName(T, i);
-                        const field_type = @memberType(T, i);
-                        const field_embed = comptime (@typeId(field_type) == .Struct and options.isStructFieldEmbedded.?(T, field_name, field_type));
-                        if (field_embed)
-                            @field(ret, field_name) = try unmarshal(field_type, mem, from, options)
-                        else if (jmap.getValue(options.rewriteStructFieldNameToJsonObjectKey.?(T, field_name))) |*jval|
-                            @field(ret, field_name) = try unmarshal(field_type, mem, jval, options)
-                        else if (options.err_on_missing_nonvoid_nonoptional_fields) {
-                            // return error.MissingField; // TODO! Zig currently segfaults here, check back later
-                        }
+                    @compileError("TODO: support JSON-unmarshaling into: " ++ @typeName(T));
+
+                var ret = @import("./xstd.mem.zig").zeroed(T);
+                comptime var i = @memberCount(T);
+                inline while (i > 0) {
+                    i -= 1;
+                    const field_name = @memberName(T, i);
+                    const field_type = @memberType(T, i);
+                    const field_embed = comptime (@typeId(field_type) == .Struct and options.isStructFieldEmbedded.?(T, field_name, field_type));
+                    if (field_embed)
+                        @field(ret, field_name) = try unmarshal(field_type, mem, from, options)
+                    else if (jmap.getValue(options.rewriteStructFieldNameToJsonObjectKey.?(T, field_name))) |*jval|
+                        @field(ret, field_name) = try unmarshal(field_type, mem, jval, options)
+                    else if (options.err_on_missing_nonvoid_nonoptional_fields) {
+                        // return error.MissingField; // TODO! Zig currently segfaults here, check back later
                     }
-                    return ret;
                 }
+                return ret;
             },
             else => return error.UnexpectedInputValueFormat,
         }
-    } else
-        @compileError("please file an issue to support JSON-unmarshaling into: " ++ @typeName(T));
+    }
+    @compileError("please file an issue to support JSON-unmarshaling into: " ++ @typeName(T));
 }
 
 pub fn nestingDepth(comptime T: type) comptime_int {
