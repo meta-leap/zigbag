@@ -65,10 +65,10 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var, comptime options: *cons
         const is_hashmap = comptime isTypeHashMapLikeDuckwise(T);
 
         var ret = std.json.Value{ .Object = std.json.ObjectMap.init(&mem.allocator) };
-        try ret.Object.initCapacity(std.math.ceilPowerOfTwo(usize, (if (is_hashmap)
-            from.count()
-        else
-            @memberCount(T)) * 5 / 3) catch return error.OutOfMemory);
+        try ret.Object.initCapacity(std.math.ceilPowerOfTwo(
+            usize,
+            (if (is_hashmap) from.count() else @memberCount(T)) * 5 / 3,
+        ) catch return error.OutOfMemory);
 
         if (is_hashmap) {
             var iter = from.iterator();
@@ -95,8 +95,8 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var, comptime options: *cons
                     while (obj.next()) |pair|
                         _ = try ret.Object.put(pair.key, pair.value);
                 } else {
-                    var should = if (field_type_id == .Optional) (field_value != null) else true;
-                    if (should) // TODO! check "control flow attempts to use compile-time variable at runtime" if above var is either const or directly inside the `if`-cond
+                    var should = if (comptime (field_type_id == .Optional)) (field_value != null) else true;
+                    if (should) // TODO! check "control flow attempts to use compile-time variable at runtime" if above `var` is either `const` or its value expression directly inside this `if`-cond
                         _ = try ret.Object.put(options.rewriteStructFieldNameToJsonObjectKey.?(T, field_name), try marshal(mem, field_value, options));
                 }
             }
@@ -189,8 +189,14 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
     if (type_id == .Struct) {
         switch (from.*) {
             .Object => |*jmap| {
-                if (comptime isTypeHashMapLikeDuckwise(T))
-                    @compileError("TODO: support JSON-unmarshaling into: " ++ @typeName(T));
+                if (comptime isTypeHashMapLikeDuckwise(T)) {
+                    var ret = T.init(&mem.allocator);
+                    try ret.initCapacity(std.math.ceilPowerOfTwo(usize, (jmap.count()) * 5 / 3) catch return error.OutOfMemory);
+                    var iter = jmap.iterator();
+                    while (iter.next()) |pair|
+                        _ = try ret.put(pair.key, pair.value);
+                    return ret;
+                }
 
                 var ret = @import("./xstd.mem.zig").zeroed(T);
                 comptime var i = @memberCount(T);
