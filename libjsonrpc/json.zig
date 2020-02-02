@@ -75,12 +75,14 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var, comptime options: *cons
                 comptime const field_type_id = comptime @typeId(field_type);
                 const field_name = @memberName(T, i);
                 const field_value = @field(from, field_name);
-                if (comptime std.mem.indexOf(u8, @typeName(field_type), "ArrayList")) |_|
-                    @compileError(@typeName(T) ++ "." ++ field_name);
-                if (comptime std.mem.indexOf(u8, field_name, "lloc")) |_|
-                    @compileError(@typeName(T) ++ "." ++ field_name);
-                if (comptime (field_type_id == .Fn))
-                    @compileError(@typeName(T) ++ "." ++ field_name);
+                comptime { // these to catch certain bugs / unintended-usages early that now probably no longer occur..
+                    if (std.mem.indexOf(u8, @typeName(field_type), "ArrayList")) |_|
+                        @compileError(@typeName(T) ++ "." ++ field_name);
+                    if (std.mem.indexOf(u8, field_name, "lloc")) |_|
+                        @compileError(@typeName(T) ++ "." ++ field_name);
+                    if ((field_type_id == .Fn))
+                        @compileError(@typeName(T) ++ "." ++ field_name);
+                }
                 if (comptime (field_type_id == .Struct and options.isStructFieldEmbedded.?(T, field_name, field_type))) {
                     var obj = try marshal(mem, field_value, options).Object.iterator();
                     while (obj.next()) |pair|
