@@ -5,5 +5,4 @@ pub fn build(bld: *std.build.Builder) void {
     const demo = bld.addTest("demo.zig");
     demo.setBuildMode(build_mode);
     bld.step("demo", "somewhere between smoke-test and demo").dependOn(&demo.step);
-    // bld.default_step.dependOn(&demo.step);
 }
