@@ -1,6 +1,13 @@
 const std = @import("std");
 
-pub inline fn replaceScalar(comptime T: type, slice: []T, old: []const T, new: T) []T {
+pub inline fn replaceScalar(comptime T: type, slice: []T, old: T, new: T) []T {
+    for (slice) |value, i|
+        if (value == old)
+            slice[i] = new;
+    return slice;
+}
+
+pub inline fn replaceScalars(comptime T: type, slice: []T, old: []const T, new: T) []T {
     for (slice) |value, i| {
         if (std.mem.indexOfScalar(T, old, value)) |_|
             slice[i] = new;

@@ -1,25 +1,27 @@
 const std = @import("std");
 
-pub fn eql(one: std.json.Value, two: std.json.Value) bool {
-    if (std.meta.activeTag(one) == std.meta.activeTag(two)) switch (one) {
+/// json.Value equality comparison: for `.Array`s and `.Object`s, equal
+/// sizes are prerequisite before further probing into their contents.
+pub fn eql(self: std.json.Value, other: std.json.Value) bool {
+    if (std.meta.activeTag(self) == std.meta.activeTag(other)) switch (self) {
         .Null => return true,
-        .Bool => |one_bool| return one_bool == two.Bool,
-        .Integer => |one_int| return one_int == two.Integer,
-        .Float => |one_float| return one_float == two.Float,
-        .String => |one_string| return std.mem.eql(u8, one_string, two.String),
+        .Bool => |self_bool| return self_bool == other.Bool,
+        .Integer => |self_int| return self_int == other.Integer,
+        .Float => |self_float| return self_float == other.Float, // TODO: reconsider if/when std.math gets a dedicated float eql
+        .String => |self_string| return std.mem.eql(u8, self_string, other.String),
 
-        .Array => |one_array| if (one_array.len == two.Array.len) {
-            for (one_array.items[0..one_array.len]) |one_array_item, i|
-                if (!eql(one_array_item, two.Array.items[i]))
+        .Array => |self_array| if (self_array.len == other.Array.len) {
+            for (self_array.items[0..self_array.len]) |self_array_item, i|
+                if (!eql(self_array_item, other.Array.items[i]))
                     return false;
             return true;
         },
 
-        .Object => |one_object| if (one_object.count() == two.Object.count()) {
-            var hash_map_iter = one_object.iterator();
+        .Object => |self_object| if (self_object.count() == other.Object.count()) {
+            var hash_map_iter = self_object.iterator();
             while (hash_map_iter.next()) |item| {
-                if (two.Object.getValue(item.key)) |two_value| {
-                    if (!eql(item.value, two_value)) return false;
+                if (other.Object.getValue(item.key)) |other_value| {
+                    if (!eql(item.value, other_value)) return false;
                 } else return false;
             }
             return true;

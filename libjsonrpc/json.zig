@@ -18,11 +18,6 @@ pub const Options = struct {
     };
 };
 
-pub const StructDesc = struct {
-    name: []const u8,
-    info: std.builtin.TypeInfo.Struct,
-};
-
 pub fn marshal(mem: *std.heap.ArenaAllocator, from: var, comptime options: Options) std.mem.Allocator.Error!std.json.Value {
     const T = comptime @TypeOf(from);
     const type_id = comptime @typeId(T);
