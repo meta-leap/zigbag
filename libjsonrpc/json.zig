@@ -18,11 +18,11 @@ pub const Options = struct {
     };
 };
 
-pub fn marshal(mem: *std.heap.ArenaAllocator, from: var, comptime options: Options) std.mem.Allocator.Error!std.json.Value {
+pub fn marshal(mem: *std.heap.ArenaAllocator, from: var, comptime options: *const Options) std.mem.Allocator.Error!std.json.Value {
     const T = comptime @TypeOf(from);
     const type_id = comptime @typeId(T);
     const type_info = comptime @typeInfo(T);
-
+    _ = nestingDepth(T);
     if (T == std.json.Value)
         return from;
     if (T == *std.json.Value or T == *const std.json.Value)
@@ -97,7 +97,7 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var, comptime options: Optio
     @compileError("please file an issue to support JSON-marshaling of: " ++ @typeName(T));
 }
 
-pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const std.json.Value, comptime options: Options) error{
+pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const std.json.Value, comptime options: *const Options) error{
     MissingField,
     UnexpectedInputValueFormat,
     OutOfMemory,
@@ -200,4 +200,34 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
         }
     } else
         @compileError("please file an issue to support JSON-unmarshaling into: " ++ @typeName(T));
+}
+
+pub fn nestingDepth(comptime T: type) comptime_int {
+    comptime {
+        const type_id = @typeId(T);
+        const type_info = @typeInfo(T);
+        if (T == std.json.Value or T == *std.json.Value or T == *const std.json.Value)
+            return 32;
+        if (type_id == .Optional)
+            return nestingDepth(type_info.Optional.child);
+        if (type_id == .Pointer)
+            return (if (type_info.Pointer.size == .One) 0 else 1) + nestingDepth(type_info.Pointer.child);
+        if (type_id == .Union) {
+            var max = 0;
+            inline for (type_info.Union.fields) |*field|
+                max = std.math.max(max, nestingDepth(field.field_type));
+            return max;
+        }
+        if (type_id == .Struct) {
+            var max = 0;
+            if (isTypeHashMapLikeDuckwise(T)) {
+                Key = @typeInfo(T.KV).Struct.fields[std.meta.fieldIndex(T.KV, "key")].field_type;
+                Value = @typeInfo(T.KV).Struct.fields[std.meta.fieldIndex(T.KV, "value")].field_type;
+                max = std.math.max(nestingDepth(Key), nestingDepth(Value));
+            } else inline for (type_info.Struct.fields) |*field|
+                max = std.math.max(max, nestingDepth(field.field_type));
+            return 1 + max;
+        }
+        return 0;
+    }
 }

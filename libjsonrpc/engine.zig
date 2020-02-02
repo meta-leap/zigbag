@@ -4,8 +4,6 @@ usingnamespace @import("./types.zig");
 
 const json = @import("./json.zig");
 
-const tmp_json_depth = 128; // TODO! compute depth statically
-
 pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
     comptime var json_options = @import("./zcomptime.zig").copyWithAllNullsSetFrom(json.Options, &jsonOptions, json.Options{
         .isStructFieldEmbedded = defaultIsStructFieldEmbedded,
@@ -65,7 +63,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
 
             var out_msg = std.json.Value{ .Object = std.json.ObjectMap.init(&mem_local.allocator) };
             if (@TypeOf(param) != void)
-                _ = try out_msg.Object.put("params", try json.marshal(&mem_local, param, json_options));
+                _ = try out_msg.Object.put("params", try json.marshal(&mem_local, param, &json_options));
             _ = try out_msg.Object.put("jsonrpc", .{ .String = "2.0" });
             _ = try out_msg.Object.put("method", .{ .String = json_options.rewriteUnionFieldNameToJsonRpcMethodName.?(T, idx, method_member_name) });
 
@@ -103,7 +101,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                     .ptr_fn = @ptrToInt(ThenStruct.?.then),
                 });
             }
-            const json_out_bytes_in_shared_buf = try self.__.dumpJsonValueToSharedBuf(self.mem_alloc_for_arenas, &out_msg, tmp_json_depth);
+            const json_out_bytes_in_shared_buf = try self.__.dumpJsonValueToSharedBuf(self.mem_alloc_for_arenas, &out_msg, 3 + json.nestingDepth(@TypeOf(param)));
             self.onOutgoing(json_out_bytes_in_shared_buf); // try std.mem.dupe(&mem_local.allocator, u8, json_out_bytes_in_shared_buf));
         }
 
@@ -127,7 +125,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                     if (hashmap.getValue("id")) |*jid|
                         msg.id = jid;
                     if (hashmap.getValue("error")) |*jerror|
-                        msg.result_err = try json.unmarshal(ResponseError, &mem_local, jerror, json_options);
+                        msg.result_err = try json.unmarshal(ResponseError, &mem_local, jerror, &json_options);
                     if (hashmap.getValue("result")) |*jresult|
                         msg.result_ok = jresult;
                     if (hashmap.getValue("params")) |*jparams|
@@ -155,7 +153,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                                 const fn_type = @typeInfo(spec_field.field_type).Fn;
                                 const param_type = @typeInfo(fn_type.args[0].arg_type.?).Struct.fields[std.meta.fieldIndex(fn_type.args[0].arg_type.?, "it").?].field_type;
                                 const param_val: param_type = if (msg.params) |params|
-                                    try json.unmarshal(param_type, &mem_local, params, json_options)
+                                    try json.unmarshal(param_type, &mem_local, params, &json_options)
                                 else if (param_type == void)
                                     undefined
                                 else if (@typeId(param_type) == .Optional)
@@ -177,7 +175,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                                 const fn_type = @typeInfo(spec_field.field_type).Fn;
                                 const param_type = @typeInfo(fn_type.args[0].arg_type.?).Struct.fields[std.meta.fieldIndex(fn_type.args[0].arg_type.?, "it").?].field_type;
                                 const param_val: param_type = if (msg.params) |params|
-                                    try json.unmarshal(param_type, &mem_local, params, json_options)
+                                    try json.unmarshal(param_type, &mem_local, params, &json_options)
                                 else if (param_type == void)
                                     undefined
                                 else if (@typeId(param_type) == .Optional)
@@ -186,7 +184,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                                     return error.MsgParamsMissing;
                                 const fn_ptr = @intToPtr(spec_field.field_type, fn_ptr_uint);
                                 const fn_ret = fn_ptr(.{ .it = param_val, .mem = &mem_local.allocator });
-                                const json_out_bytes_in_shared_buf = try self.__.dumpJsonValueToSharedBuf(self.mem_alloc_for_arenas, &(try json.marshal(&mem_local, fn_ret.toJsonRpcResponse(msg.id), json_options)), tmp_json_depth);
+                                const json_out_bytes_in_shared_buf = try self.__.dumpJsonValueToSharedBuf(self.mem_alloc_for_arenas, &(try json.marshal(&mem_local, fn_ret.toJsonRpcResponse(msg.id), &json_options)), 3 + json.nestingDepth(spec_field.field_type));
                                 return self.onOutgoing(json_out_bytes_in_shared_buf); // try std.mem.dupe(&mem_local.allocator, u8, json_out_bytes_in_shared_buf));
                             }
                             return;
@@ -194,7 +192,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                     const json_out_bytes_in_shared_buf = try self.__.dumpJsonValueToSharedBuf(self.mem_alloc_for_arenas, &(try json.marshal(&mem_local, ResponseError{
                         .code = @enumToInt(ErrorCodes.MethodNotFound),
                         .message = msg.method,
-                    }, json_options)), tmp_json_depth);
+                    }, &json_options)), 3 + json.nestingDepth(ResponseError));
                     return self.onOutgoing(json_out_bytes_in_shared_buf); // try std.mem.dupe(&mem_local.allocator, u8, json_out_bytes_in_shared_buf));
                 },
 
@@ -212,7 +210,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                                         const fn_arg = if (msg.result_err) |err|
                                             Ret(TResponse){ .err = err }
                                         else if (msg.result_ok) |ret|
-                                            Ret(TResponse){ .ok = try json.unmarshal(TResponse, &response_awaiter.mem_arena, ret, json_options) }
+                                            Ret(TResponse){ .ok = try json.unmarshal(TResponse, &response_awaiter.mem_arena, ret, &json_options) }
                                         else
                                             Ret(TResponse){ .err = ResponseError{ .code = 0, .message = "unreachable" } }; // unreachable; // TODO! Zig currently segfaults here, check back later
 
