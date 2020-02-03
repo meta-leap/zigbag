@@ -5,14 +5,7 @@ usingnamespace @import("./types.zig");
 
 const json = @import("./json.zig");
 
-pub fn Engine(comptime spec: Spec, comptime jsonOptions: Options) type {
-    comptime var json_options = zag.meta.copyStructWithAllNullsSetFrom(Options, &jsonOptions, Options{
-        .isStructFieldEmbedded = defaultIsStructFieldEmbedded,
-        .rewriteStructFieldNameToJsonObjectKey = defaultRewriteStructFieldNameToJsonObjectKey,
-        .rewriteUnionFieldNameToJsonRpcMethodName = defaultRewriteUnionFieldNameToJsonRpcMethodName,
-        .rewriteJsonRpcMethodNameToUnionFieldName = defaultRewriteJsonRpcMethodNameToUnionFieldName,
-    });
-
+pub fn Engine(comptime spec: Spec, comptime json_options: Options) type {
     return struct {
         // force_single_threaded: bool = @import("builtin").single_threaded,
         mem_alloc_for_arenas: *std.mem.Allocator,
@@ -265,20 +258,4 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: Options) type {
             }
         };
     };
-}
-
-fn defaultRewriteStructFieldNameToJsonObjectKey(comptime TStruct: type, field_name: []const u8) []const u8 {
-    return field_name;
-}
-
-fn defaultIsStructFieldEmbedded(comptime struct_type: type, field_name: []const u8, comptime field_type: type) bool {
-    return false; // std.mem.eql(u8, field_name, @typeName(field_type));
-}
-
-fn defaultRewriteUnionFieldNameToJsonRpcMethodName(comptime union_type: type, comptime union_field_idx: comptime_int, comptime union_field_name: []const u8) []const u8 {
-    return union_field_name;
-}
-
-fn defaultRewriteJsonRpcMethodNameToUnionFieldName(incoming_kind: MsgKind, jsonrpc_method_name: []const u8) []const u8 {
-    return jsonrpc_method_name;
 }

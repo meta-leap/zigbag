@@ -73,15 +73,15 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var, comptime options: *cons
                     if ((field_type_id == .Fn))
                         @compileError(@typeName(T) ++ "." ++ field_name);
                 }
-                if (comptime (field_type_id == .Struct and options.isStructFieldEmbedded.?(T, field_name, field_type))) {
-                    var obj = try marshal(mem, field_value, options).Object.iterator();
-                    while (obj.next()) |pair|
-                        _ = try ret.Object.put(pair.key, pair.value);
-                } else {
-                    var should = if (comptime (field_type_id == .Optional)) (field_value != null) else true;
-                    if (should) // TODO! check "control flow attempts to use compile-time variable at runtime" if above `var` is either `const` or its value expression directly inside this `if`-cond
-                        _ = try ret.Object.put(options.rewriteStructFieldNameToJsonObjectKey.?(T, field_name), try marshal(mem, field_value, options));
-                }
+                // if (comptime (field_type_id == .Struct and options.isStructFieldEmbedded(T, field_name, field_type))) {
+                //     var obj = try marshal(mem, field_value, options).Object.iterator();
+                //     while (obj.next()) |pair|
+                //         _ = try ret.Object.put(pair.key, pair.value);
+                // } else {
+                //     var should = if (comptime (field_type_id == .Optional)) (field_value != null) else true;
+                //     if (should) // TODO! check "control flow attempts to use compile-time variable at runtime" if above `var` is either `const` or its value expression directly inside this `if`-cond
+                //         _ = try ret.Object.put(options.rewriteStructFieldNameToJsonObjectKey.?(T, field_name), try marshal(mem, field_value, options));
+                // }
             }
         }
         return ret;
@@ -188,14 +188,14 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
                     i -= 1;
                     const field_name = @memberName(T, i);
                     const field_type = @memberType(T, i);
-                    const field_embed = comptime (@typeId(field_type) == .Struct and options.isStructFieldEmbedded.?(T, field_name, field_type));
-                    if (field_embed)
-                        @field(ret, field_name) = try unmarshal(field_type, mem, from, options)
-                    else if (jmap.getValue(options.rewriteStructFieldNameToJsonObjectKey.?(T, field_name))) |*jval|
-                        @field(ret, field_name) = try unmarshal(field_type, mem, jval, options)
-                    else if (options.err_on_missing_nonvoid_nonoptional_fields) {
-                        // return error.MissingField; // TODO! Zig currently segfaults here, check back later
-                    }
+                    // const field_embed = comptime (@typeId(field_type) == .Struct and options.isStructFieldEmbedded(T, field_name, field_type));
+                    // if (field_embed)
+                    //     @field(ret, field_name) = try unmarshal(field_type, mem, from, options)
+                    // else if (jmap.getValue(options.rewriteStructFieldNameToJsonObjectKey.?(T, field_name))) |*jval|
+                    //     @field(ret, field_name) = try unmarshal(field_type, mem, jval, options)
+                    // else if (options.err_on_missing_nonvoid_nonoptional_fields) {
+                    //     // return error.MissingField; // TODO! Zig currently segfaults here, check back later
+                    // }
                 }
                 return ret;
             },

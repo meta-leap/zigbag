@@ -69,8 +69,24 @@ pub const Options = struct {
     set_optionals_null_on_bad_inputs: bool = false,
     err_on_missing_nonvoid_nonoptional_fields: bool = true,
 
-    isStructFieldEmbedded: ?fn (type, []const u8, type) bool = null,
-    rewriteStructFieldNameToJsonObjectKey: ?fn (type, []const u8) []const u8 = null,
-    rewriteUnionFieldNameToJsonRpcMethodName: ?fn (type, comptime_int, []const u8) []const u8 = null,
-    rewriteJsonRpcMethodNameToUnionFieldName: ?fn (MsgKind, []const u8) []const u8 = null,
+    isStructFieldEmbedded: ?fn (comptime struct_type: type, field_name: []const u8, comptime field_type: type) bool = defaultIsStructFieldEmbedded,
+    rewriteStructFieldNameToJsonObjectKey: ?fn (type, []const u8) []const u8 = defaultRewriteStructFieldNameToJsonObjectKey,
+    rewriteUnionFieldNameToJsonRpcMethodName: ?fn (type, comptime_int, []const u8) []const u8 = defaultRewriteUnionFieldNameToJsonRpcMethodName,
+    rewriteJsonRpcMethodNameToUnionFieldName: ?fn (MsgKind, []const u8) []const u8 = defaultRewriteJsonRpcMethodNameToUnionFieldName,
+
+    pub fn defaultIsStructFieldEmbedded(comptime struct_type: type, field_name: []const u8, comptime field_type: type) bool {
+        return false; // std.mem.eql(u8, field_name, @typeName(field_type));
+    }
+
+    pub fn defaultRewriteStructFieldNameToJsonObjectKey(comptime TStruct: type, field_name: []const u8) []const u8 {
+        return field_name;
+    }
+
+    pub fn defaultRewriteUnionFieldNameToJsonRpcMethodName(comptime union_type: type, comptime union_field_idx: comptime_int, comptime union_field_name: []const u8) []const u8 {
+        return union_field_name;
+    }
+
+    pub fn defaultRewriteJsonRpcMethodNameToUnionFieldName(incoming_kind: MsgKind, jsonrpc_method_name: []const u8) []const u8 {
+        return jsonrpc_method_name;
+    }
 };
