@@ -1,11 +1,12 @@
 const std = @import("std");
+const zag = @import("zag");
 
 usingnamespace @import("./types.zig");
 
 const json = @import("./json.zig");
 
-pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
-    comptime var json_options = @import("./zcomptime.zig").copyWithAllNullsSetFrom(json.Options, &jsonOptions, json.Options{
+pub fn Engine(comptime spec: Spec, comptime jsonOptions: Options) type {
+    comptime var json_options = zag.meta.copyStructWithAllNullsSetFrom(Options, &jsonOptions, Options{
         .isStructFieldEmbedded = defaultIsStructFieldEmbedded,
         .rewriteStructFieldNameToJsonObjectKey = defaultRewriteStructFieldNameToJsonObjectKey,
         .rewriteUnionFieldNameToJsonRpcMethodName = defaultRewriteUnionFieldNameToJsonRpcMethodName,
@@ -115,7 +116,7 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                 params: ?*std.json.Value = null,
                 result_ok: ?*std.json.Value = null,
                 result_err: ?ResponseError = null,
-                kind: json.Options.MsgKind = undefined,
+                kind: MsgKind = undefined,
             } = .{};
 
             // FIRST: gather what we can for `msg`
@@ -132,14 +133,14 @@ pub fn Engine(comptime spec: Spec, comptime jsonOptions: json.Options) type {
                         msg.params = jparams;
 
                     msg.kind = if (msg.id) |_|
-                        (if (msg.result_err == null and msg.result_ok == null) json.Options.MsgKind.request else json.Options.MsgKind.response)
+                        (if (msg.result_err == null and msg.result_ok == null) MsgKind.request else MsgKind.response)
                     else
-                        json.Options.MsgKind.notification;
+                        MsgKind.notification;
 
                     if (hashmap.getValue("method")) |jmethod| switch (jmethod) {
                         .String => |jstr| msg.method = json_options.rewriteJsonRpcMethodNameToUnionFieldName.?(msg.kind, jstr),
                         else => return error.MsgMalformedMethodField,
-                    } else if (msg.kind != json.Options.MsgKind.response)
+                    } else if (msg.kind != MsgKind.response)
                         return error.MsgMissingMethodField;
                 },
             }
@@ -278,6 +279,6 @@ fn defaultRewriteUnionFieldNameToJsonRpcMethodName(comptime union_type: type, co
     return union_field_name;
 }
 
-fn defaultRewriteJsonRpcMethodNameToUnionFieldName(incoming_kind: json.Options.MsgKind, jsonrpc_method_name: []const u8) []const u8 {
+fn defaultRewriteJsonRpcMethodNameToUnionFieldName(incoming_kind: MsgKind, jsonrpc_method_name: []const u8) []const u8 {
     return jsonrpc_method_name;
 }

@@ -1,24 +1,7 @@
 const std = @import("std");
+const zag = @import("zag");
 
-usingnamespace @import("./zcomptime.zig");
-
-pub const Options = struct {
-    set_optionals_null_on_bad_inputs: bool = false,
-    err_on_missing_nonvoid_nonoptional_fields: bool = true,
-
-    isStructFieldEmbedded: ?fn (type, []const u8, type) bool = null,
-    rewriteStructFieldNameToJsonObjectKey: ?fn (type, []const u8) []const u8 = null,
-    rewriteUnionFieldNameToJsonRpcMethodName: ?fn (type, comptime_int, []const u8) []const u8 = null,
-    rewriteJsonRpcMethodNameToUnionFieldName: ?fn (MsgKind, []const u8) []const u8 = null,
-
-    pub const MsgKind = enum {
-        notification,
-        request,
-        response,
-    };
-};
-
-pub fn marshal(mem: *std.heap.ArenaAllocator, from: var, comptime options: *const Options) std.mem.Allocator.Error!std.json.Value {
+pub fn marshal(mem: *std.heap.ArenaAllocator, from: var, comptime options: *const @import("./types.zig").Options) std.mem.Allocator.Error!std.json.Value {
     const T = comptime @TypeOf(from);
     const type_id = comptime @typeId(T);
     const type_info = comptime @typeInfo(T);
@@ -62,7 +45,7 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var, comptime options: *cons
         unreachable;
     }
     if (type_id == .Struct) {
-        const is_hashmap = comptime isTypeHashMapLikeDuckwise(T);
+        const is_hashmap = comptime zag.meta.isTypeHashMapLikeDuckwise(T);
 
         var ret = std.json.Value{ .Object = std.json.ObjectMap.init(&mem.allocator) };
         try ret.Object.initCapacity(std.math.ceilPowerOfTwo(
@@ -106,7 +89,7 @@ pub fn marshal(mem: *std.heap.ArenaAllocator, from: var, comptime options: *cons
     @compileError("please file an issue to support JSON-marshaling of: " ++ @typeName(T));
 }
 
-pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const std.json.Value, comptime options: *const Options) error{
+pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const std.json.Value, comptime options: *const @import("./types.zig").Options) error{
     MissingField,
     UnexpectedInputValueFormat,
     OutOfMemory,
@@ -190,7 +173,7 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
     if (type_id == .Struct) {
         switch (from.*) {
             .Object => |*jmap| {
-                if (comptime isTypeHashMapLikeDuckwise(T)) {
+                if (comptime zag.meta.isTypeHashMapLikeDuckwise(T)) {
                     var ret = T.init(&mem.allocator);
                     try ret.initCapacity(std.math.ceilPowerOfTwo(usize, (jmap.count()) * 5 / 3) catch return error.OutOfMemory);
                     var iter = jmap.iterator();
@@ -199,7 +182,7 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
                     return ret;
                 }
 
-                var ret = @import("./xstd.mem.zig").zeroed(T);
+                var ret = zag.mem.zeroed(T);
                 comptime var i = @memberCount(T);
                 inline while (i > 0) {
                     i -= 1;
@@ -240,7 +223,7 @@ pub fn nestingDepth(comptime T: type) comptime_int {
         }
         if (type_id == .Struct) {
             var max = 0;
-            if (isTypeHashMapLikeDuckwise(T)) {
+            if (comptime zag.meta.isTypeHashMapLikeDuckwise(T)) {
                 Key = @typeInfo(T.KV).Struct.fields[std.meta.fieldIndex(T.KV, "key")].field_type;
                 Value = @typeInfo(T.KV).Struct.fields[std.meta.fieldIndex(T.KV, "value")].field_type;
                 max = std.math.max(nestingDepth(Key), nestingDepth(Value));

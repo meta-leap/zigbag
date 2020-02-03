@@ -58,3 +58,19 @@ pub fn Ret(comptime T: type) type {
         }
     };
 }
+
+pub const MsgKind = enum {
+    notification,
+    request,
+    response,
+};
+
+pub const Options = struct {
+    set_optionals_null_on_bad_inputs: bool = false,
+    err_on_missing_nonvoid_nonoptional_fields: bool = true,
+
+    isStructFieldEmbedded: ?fn (type, []const u8, type) bool = null,
+    rewriteStructFieldNameToJsonObjectKey: ?fn (type, []const u8) []const u8 = null,
+    rewriteUnionFieldNameToJsonRpcMethodName: ?fn (type, comptime_int, []const u8) []const u8 = null,
+    rewriteJsonRpcMethodNameToUnionFieldName: ?fn (MsgKind, []const u8) []const u8 = null,
+};

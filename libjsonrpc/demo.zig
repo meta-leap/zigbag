@@ -41,7 +41,7 @@ test "demo" {
     const time_now = @intCast(i64, std.time.milliTimestamp()); // want something guaranteed to be runtime-not-comptime
 
     const Engine = @import("./engine.zig").
-        Engine(our_api, @import("./json.zig").Options{});
+        Engine(our_api, Options{});
 
     var our_rpc = Engine{
         .onOutgoing = onOutput,
@@ -149,8 +149,4 @@ fn demo_envVarNames() ![]String {
             try ret.append(pair[0..pos]);
     }
     return ret.toOwnedSlice();
-}
-
-test "misc" {
-    std.testing.expect(@import("zcomptime.zig").isTypeHashMapLikeDuckwise(std.StringHashMap([][]u8)));
 }
