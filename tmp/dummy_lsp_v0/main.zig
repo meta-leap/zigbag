@@ -12,7 +12,6 @@ pub fn main() !u8 {
     }).serve();
 
     try tmpMockToForceCompilations();
-    return 1;
 }
 
 fn tmpMockToForceCompilations() !void {

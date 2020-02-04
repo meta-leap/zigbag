@@ -109,11 +109,9 @@ pub fn unmarshal(comptime T: type, mem: *std.heap.ArenaAllocator, from: *const s
                             @field(ret, field_name) = it;
                         // else return null; // TODO: compiler segfaults with this currently (January 2020), not an issue until we begin seeing the below stderr print in the wild though
                     } else if (jmap.getValue(unescapeKeyword(field_name))) |*jval| {
-                        if (unmarshal(field_type, mem, jval)) |it|
-                            @field(ret, field_name) = it
-                        else if (@typeId(field_type) != .Optional)
-                        // return null; // TODO: see segfault note above, same here
-                            std.debug.warn("MISSING:\t{}.{}\n", .{ @typeName(T), field_name });
+                        // if (unmarshal(field_type, mem, jval)) |it| {
+                        //     @field(ret, field_name) = it;
+                        // } else if (@typeId(field_type) != .Optional) {}
                     }
                 }
                 return ret;

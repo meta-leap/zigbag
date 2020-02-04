@@ -7,29 +7,11 @@ const lspj = @import("./lsp_json.zig");
 pub const LangServer = struct {
     input: *std.io.InStream(std.os.ReadError),
     output: *std.io.OutStream(std.os.WriteError),
-    mem_alloc_for_arenas: *std.mem.Allocator,
-    dbgprint_all_outgoings: bool = true,
-
-    handlers_requests: [@memberCount(RequestIn)]?usize = ([_]?usize{null}) ** @memberCount(RequestIn),
-    handlers_notifies: [@memberCount(NotifyIn)]?usize = ([_]?usize{null}) ** @memberCount(NotifyIn),
 
     pub var setup = InitializeResult{
         .capabilities = .{},
         .serverInfo = .{ .name = "" }, // if empty, will be set to `process.args[0]`
     };
-
-    pub fn on(self: *LangServer, comptime handler: var) void {
-        const T = @TypeOf(handler);
-        if (T != RequestIn and T != NotifyIn)
-            @compileError(@typeName(T));
-
-        const idx = comptime @enumToInt(std.meta.activeTag(handler));
-        const fn_ptr = @ptrToInt(@field(handler, @memberName(T, idx)));
-        const arr = &(comptime if (T == RequestIn) self.handlers_requests else self.handlers_notifies);
-        if (arr[idx]) |_|
-            @panic("LangServer.on(" ++ @memberName(T, idx) ++ ") already subscribed-to, cannot overwrite existing subscriber");
-        arr[idx] = fn_ptr;
-    }
 
     pub fn serve(self: *LangServer) !void {
         var mem_buf = std.heap.ArenaAllocator.init(self.mem_alloc_for_arenas);
