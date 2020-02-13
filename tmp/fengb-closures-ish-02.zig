@@ -1,3 +1,5 @@
+// contributed by github.com/fengb to #zig irc chan on 13 Feb 2020
+
 const any = @OpaqueType();
 
 fn Closure(comptime Return: type) type {
