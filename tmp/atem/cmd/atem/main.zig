@@ -19,10 +19,7 @@ pub fn main() !void {
     const envlist = try atem.listFrom(&mem.allocator, osenv);
 
     const srcfilepath = std.mem.toSlice(u8, std.os.argv[1]);
-    const srcfile = try std.fs.File.openRead(srcfilepath);
-    defer srcfile.close();
-    const srcfiletext = try mem.allocator.alloc(u8, (try srcfile.stat()).size);
-    _ = try srcfile.inStream().stream.readFull(srcfiletext);
+    const srcfiletext = try std.fs.cwd().readFileAlloc(&mem.allocator, srcfilepath, @as(usize, 1024 * 1024 * 1024));
     const prog = try atem.LoadFromJson(&mem, srcfiletext);
     // std.debug.warn("\n\n{s}\n\n", .{atem.toJsonSrc(&mem.allocator, prog)});
 
